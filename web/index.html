@@ -214,10 +214,10 @@ label.check { display: inline-flex; gap: 6px; align-items: center; }
         <div class="form">
           <label for="newId">Name</label>
           <input type="text" id="newId" placeholder="Exercise_2">
-          <label for="newSolution">Solution (solution.py)</label>
+          <label for="newSolution">Solution (solution.py, optional)</label>
           <input type="file" id="newSolution" accept=".py">
-          <label for="newCriteria">Criteria (criteria.py)</label>
-          <input type="file" id="newCriteria" accept=".py">
+          <label for="newCriteria">Rules (rules.json or criteria.py)</label>
+          <input type="file" id="newCriteria" accept=".json,.py">
           <span></span>
           <div>
             <button id="saveExerciseButton" class="primary">Save exercise</button>
@@ -322,7 +322,7 @@ function renderExercises() {
       ${e.ai_trap.length ? `<p class="muted small">AI trap: ${e.ai_trap.map(esc).join(", ")}</p>` : ""}
       <div class="actions" style="margin-bottom:0">
         <button data-show="${esc(e.id)}|solution">Show solution</button>
-        <button data-show="${esc(e.id)}|criteria">Show criteria</button>
+        <button data-show="${esc(e.id)}|criteria">Show rules</button>
       </div>
       <pre hidden id="file_${esc(e.id)}"></pre>
     </div>`).join("") || '<div class="empty">No exercises yet.</div>';

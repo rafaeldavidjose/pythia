@@ -40,44 +40,103 @@ Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. Th
 
 ## Adding an exercise
 
-An exercise is a folder in `exercises/` with two files:
+An exercise is a folder in `exercises/` with a rules file and, usually, the reference solution:
 
-- `solution.py` is the reference solution. The tests compare the student's code with it.
-- `criteria.py` says what to test and how much each criterion is worth.
+- `rules.json` lists what to test and how much each criterion is worth.
+- `solution.py` is the reference solution. A test without an `expected` value is compared with what the solution returns. It is optional when every test has an `expected`.
 
 Create it in the **Exercises** tab or copy the folder into `exercises/`. Saving with an existing name replaces the files. `exercises/Exercise_1` is a complete example to copy from.
 
+```json
+{
+  "title": "Mini-projeto de avaliação",
+  "load_inputs": ["sair"],
+  "ai_trap": ["palavra_rara"],
+  "criteria": [
+    {
+      "name": "soma",
+      "points": 3,
+      "description": "Devolve a soma de dois números.",
+      "tests": [
+        {"check": "call", "function": "soma", "args": [2, 3]},
+        {"check": "call", "function": "soma", "args": [-1, 1],
+         "expected": 0, "hint": "Os números podem ser negativos."}
+      ]
+    },
+    {
+      "name": "Ciclo do programa",
+      "points": 4,
+      "tests": [
+        {"check": "program", "inputs": ["2", "3", "sair"],
+         "contains": ["5"], "label": "programa: somar e sair"}
+      ]
+    }
+  ]
+}
+```
+
+Top level:
+
+| Key | Meaning |
+|---|---|
+| `title` | Name shown in the report. |
+| `load_inputs` | Answers given to `input()` when the file is loaded to collect its functions. |
+| `ai_trap` | Optional words from a hidden instruction in the assignment, see below. |
+| `criteria` | List of criteria. The points should add up to the maximum grade. |
+
+Each criterion has `name`, `points` and `tests`, plus the optional `description`, `hint` (used when a test fails and has no hint of its own) and `review` (true flags it for manual checking).
+
+A test has a `check` and its parameters. Every test also takes `weight` (default 1), `hint` and `label` (the text shown in the report, which has a default).
+
+`"check": "call"` calls the student's function and the solution's with the same arguments:
+
+| Parameter | Meaning |
+|---|---|
+| `function` | Name of the function. Required. |
+| `args` | List of arguments. |
+| `expected` | Value the function must return. Without it, the return value is compared with the solution's. |
+| `check_return` | `false` to ignore the return value. |
+| `output` | `"equal"` compares what is printed with the solution's output. |
+| `output_contains` | Phrases that must appear in what is printed. |
+| `output_excludes` | Phrases that must not appear. |
+| `mutates` | Argument positions (`[0]`) that must end up equal to the solution's after the call. |
+| `inputs` | Answers given to `input()` during the call. |
+| `names` | Names for list arguments in the report, like `{"0": "mapa"}`. |
+
+`"check": "program"` runs the whole file with fixed answers to `input()`:
+
+| Parameter | Meaning |
+|---|---|
+| `inputs` | Answers given to `input()`, in order. Required. |
+| `contains` | Phrases that must appear in the output. |
+| `excludes` | Phrases that must not appear. |
+| `must_finish` | `true` by default. The program cannot ask for more input than given. |
+
+JSON has no tuples, so a tuple argument is written as a list. Tuples and lists count as equal when comparing, and phrases ignore case, accents and extra spaces, so a valid alternative solution is not penalised. A criterion's grade is the share of passing tests (by weight), rounded to 0.25.
+
+`hint`, `label` and `description` are shown to students, so write them in Portuguese.
+
+A wrong file is reported in the Exercises tab with the criterion and test that has the problem, for example an unknown key or a missing `expected`.
+
+`ai_trap` lists words from a hidden instruction in the assignment. If the code contains one, the list shows "possible AI" and the student page shows the lines. It never changes the grade or the report.
+
+### When JSON is not enough
+
+An exercise can use a `criteria.py` instead of `rules.json`, written with the helpers in `checks.py` (`criterion`, `call`, `program`, `named`). It takes the same parameters as keyword arguments and lets you share values or build tests in a loop. It needs a `solution.py`. If both files exist, `rules.json` wins.
+
 ```python
-from checks import call, criterion, named, program
+from checks import call, criterion
 
 TITLE = "Mini-projeto de avaliação"
-LOAD_INPUTS = ["sair"]      # answers to input() when the file is loaded
-AI_TRAP = ["palavra_rara"]  # optional, see below
+LOAD_INPUTS = ["sair"]
 
 CRITERIA = [
     criterion("soma", 3, [
         call("soma", 2, 3),
-        call("soma", -1, 1,
-             hint="Os números podem ser negativos."),
-    ], description="Devolve a soma de dois números."),
-
-    criterion("Ciclo do programa", 4, [
-        program(["2", "3", "sair"], contains=["5"],
-                label="programa: somar e sair"),
+        call("soma", -1, 1, expected=0),
     ]),
 ]
 ```
-
-There are two kinds of test:
-
-- `call(func, *args)` calls the student's function and the solution's with the same arguments and compares the return values. Options: `output="equal"` compares what is printed, `output_contains` and `output_excludes` check the output, `mutates=[0]` compares a list argument after the call, `inputs` feeds `input()`.
-- `program(inputs, contains=[...])` runs the whole file with those answers to `input()` and looks for the phrases in the output. The program has to finish without asking for more input.
-
-A criterion's grade is the share of passing tests, weighted and rounded to 0.25. Tuples and lists count as equal, and phrases ignore case, accents and extra spaces, so a valid alternative solution is not penalised.
-
-`hint`, `label` and `description` are shown to students, so write them in Portuguese. `named(value, "mapa")` makes a value show up as `mapa` in the report messages.
-
-`AI_TRAP` is a list of words from a hidden instruction in the assignment. If the code contains one, the list shows "possible AI" and the student page shows the lines. It never changes the grade or the report.
 
 ## Safety
 

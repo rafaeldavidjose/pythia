@@ -273,7 +273,9 @@ def main() -> None:
         job = pickle.load(file)
     sys.setrecursionlimit(3000)
     student_file = job["student"]
-    solution_ns, _, _ = load(job["solution"], job["load_inputs"])
+    solution_ns = {}
+    if job["solution"]:
+        solution_ns, _, _ = load(job["solution"], job["load_inputs"])
     student_ns, code, load_error = load(student_file, job["load_inputs"])
 
     load_info = {"ok": load_error is None and code is not None, "error": None}

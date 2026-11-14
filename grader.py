@@ -28,7 +28,8 @@ def evaluate_in_background(ex_id: str, ids: list[str]) -> None:
     try:
         ex = engine.load_exercise(ex_id)
     except Exception as error:
-        progress.update(running=False, error=f"Error in criteria.py: {error}")
+        message = f"Error in the exercise rules: {error}"
+        progress.update(running=False, error=message)
         return
 
     def evaluate_one(student_id: str) -> None:
@@ -179,10 +180,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/exercises":
             self.send(engine.list_exercises())
         elif path == "/api/exercise_file":
-            which = "solution" if query["which"] == "solution" else "criteria"
-            file = os.path.join(engine.EXERCISES_DIR, engine.slug(query["ex"]),
-                                which + ".py")
-            text = engine.read_text(file) if os.path.exists(file) else ""
+            folder = os.path.join(engine.EXERCISES_DIR,
+                                  engine.slug(query["ex"]))
+            if query["which"] == "solution":
+                names = ["solution.py"]
+            else:
+                names = ["rules.json", "criteria.py"]
+            paths = [os.path.join(folder, name) for name in names]
+            existing = [path for path in paths if os.path.exists(path)]
+            text = engine.read_text(existing[0]) if existing else ""
             self.send({"text": text})
         elif path == "/api/students":
             records = engine.load_state(query["ex"])["students"].values()

@@ -1,7 +1,7 @@
 """
 Grader engine: exercises, importing submissions, evaluation, reports and export.
 No language model is involved: grades come only from the tests defined in
-exercises/<id>/criteria.py, compared against exercises/<id>/solution.py.
+exercises/<id>/rules.json (or criteria.py), compared against solution.py.
 
 Everything a student reads (reports, test messages) is in Portuguese.
 """
@@ -22,6 +22,7 @@ import unicodedata
 import zipfile
 from typing import Any
 
+import rules
 import simple_pdf
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -141,20 +142,37 @@ def find_student(
 
 
 # Exercises
-def load_exercise(ex_id: str) -> dict:
-    folder = os.path.join(EXERCISES_DIR, ex_id)
+def _load_criteria_py(folder: str, ex_id: str) -> dict:
     spec = importlib.util.spec_from_file_location(
         "criteria_" + slug(ex_id), os.path.join(folder, "criteria.py")
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return {
-        "id": ex_id,
         "title": getattr(module, "TITLE", ex_id),
         "load_inputs": list(getattr(module, "LOAD_INPUTS", [])),
         "ai_trap": [str(word) for word in getattr(module, "AI_TRAP", [])],
         "criteria": module.CRITERIA,
-        "solution": os.path.join(folder, "solution.py"),
+    }
+
+
+def load_exercise(ex_id: str) -> dict:
+    """Load rules.json if the exercise has one, otherwise criteria.py."""
+    folder = os.path.join(EXERCISES_DIR, ex_id)
+    solution = os.path.join(folder, "solution.py")
+    has_solution = os.path.exists(solution)
+    rules_file = os.path.join(folder, "rules.json")
+    if os.path.exists(rules_file):
+        definition = rules.load_rules(rules_file, has_solution)
+    else:
+        definition = _load_criteria_py(folder, ex_id)
+    return {
+        "id": ex_id,
+        "title": definition["title"] or ex_id,
+        "load_inputs": definition["load_inputs"],
+        "ai_trap": definition["ai_trap"],
+        "criteria": definition["criteria"],
+        "solution": solution if has_solution else None,
     }
 
 
@@ -175,9 +193,12 @@ def list_exercises() -> list[dict]:
             "ai_trap": [],
             "students": len(load_state(ex_id)["students"]),
         }
-        if not os.path.exists(os.path.join(folder, "criteria.py")):
-            info["error"] = "criteria.py is missing"
-        elif not os.path.exists(os.path.join(folder, "solution.py")):
+        has_rules = os.path.exists(os.path.join(folder, "rules.json"))
+        has_criteria = os.path.exists(os.path.join(folder, "criteria.py"))
+        has_solution = os.path.exists(os.path.join(folder, "solution.py"))
+        if not has_rules and not has_criteria:
+            info["error"] = "rules.json or criteria.py is missing"
+        elif not has_rules and not has_solution:
             info["error"] = "solution.py is missing"
         else:
             try:
@@ -208,7 +229,14 @@ def save_exercise(
     ex_id = slug(ex_id)
     folder = os.path.join(EXERCISES_DIR, ex_id)
     os.makedirs(folder, exist_ok=True)
-    files = {"solution.py": solution, "criteria.py": criteria}
+    files = {"solution.py": solution}
+    if criteria is not None:
+        # JSON starts with "{", anything else is the Python criteria file
+        is_rules = criteria.lstrip().startswith("{")
+        files["rules.json" if is_rules else "criteria.py"] = criteria
+        other = "criteria.py" if is_rules else "rules.json"
+        if os.path.exists(os.path.join(folder, other)):
+            os.remove(os.path.join(folder, other))
     for filename, content in files.items():
         if content is None:
             continue
