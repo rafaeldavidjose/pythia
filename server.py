@@ -1,6 +1,6 @@
 """
-Pythia: local web app to grade student submissions with automatic tests.
-Start with:  python grader.py   (opens http://127.0.0.1:8765 in the browser)
+Web interface: a small HTTP server with the JSON API used by web/index.html.
+Started by "python pythia.py" (or "python pythia.py serve").
 """
 
 import base64
@@ -10,7 +10,6 @@ import threading
 import traceback
 import urllib.parse
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -20,35 +19,20 @@ PORT = 8765
 PAGE = os.path.join(engine.BASE, "web", "index.html")
 
 _jobs: dict[str, dict] = {}  # progress of running evaluations, per exercise
-_lock = threading.Lock()
 
 
-def evaluate_in_background(ex_id: str, ids: list[str]) -> None:
+def _grade_in_background(ex_id: str, ids: list[str]) -> None:
     progress = _jobs[ex_id]
+
+    def count(student_id: str, ok: bool) -> None:
+        progress["done"] += 1
+        if not ok:
+            progress["failed"] += 1
+
     try:
-        ex = engine.load_exercise(ex_id)
+        engine.grade_students(ex_id, ids, count)
     except Exception as error:
-        message = f"Error in the exercise rules: {error}"
-        progress.update(running=False, error=message)
-        return
-
-    def evaluate_one(student_id: str) -> None:
-        record = engine.load_state(ex_id)["students"][student_id]
-        evaluation = engine.evaluate_student(ex, record)
-        with _lock:
-            state = engine.load_state(ex_id)
-            engine.apply_evaluation(state["students"][student_id], evaluation)
-            engine.save_state(ex_id, state)
-            progress["done"] += 1
-
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(evaluate_one, student_id) for student_id in ids]
-        for future in futures:
-            try:
-                future.result()
-            except Exception:
-                traceback.print_exc()
-                progress["failed"] += 1
+        progress["error"] = f"Error in the exercise rules: {error}"
     progress["running"] = False
 
 
@@ -56,19 +40,13 @@ def start_evaluation(ex_id: str, ids: list[str] | None,
                      regrade: bool) -> dict:
     if _jobs.get(ex_id, {}).get("running"):
         raise ValueError("An evaluation is already running for this exercise.")
-    students = engine.load_state(ex_id)["students"]
-    if not ids:
-        ids = [student_id for student_id, record in students.items()
-               if regrade or not record.get("evaluation")]
-    ids = [student_id for student_id in ids
-           if student_id in students
-           and not students[student_id].get("finalized")]
+    ids = engine.select_students(ex_id, ids, regrade)
     _jobs[ex_id] = {"running": True, "total": len(ids), "done": 0,
                     "failed": 0, "error": None}
-    thread = threading.Thread(target=evaluate_in_background,
+    thread = threading.Thread(target=_grade_in_background,
                               args=(ex_id, ids), daemon=True)
     thread.start()
-    return _jobs[ex_id]
+    return dict(_jobs[ex_id])
 
 
 def summary(record: dict) -> dict:
@@ -110,7 +88,7 @@ def student_details(ex_id: str, student_id: str) -> dict:
 
 
 def save_student(changes: dict) -> dict:
-    with _lock:
+    with engine.STATE_LOCK:
         state = engine.load_state(changes["ex"])
         record = state["students"][changes["id"]]
         record.setdefault("grades", {}).update(
@@ -127,6 +105,12 @@ def save_student(changes: dict) -> dict:
             record["file"] = changes["file"]
         engine.save_state(changes["ex"], state)
     return summary(record)
+
+
+def exercise_file(ex_id: str, which: str) -> str:
+    name = "solution.py" if which == "solution" else "rules.json"
+    path = os.path.join(engine.exercise_folder(ex_id), name)
+    return engine.read_text(path) if os.path.exists(path) else ""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -155,23 +139,24 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
-    def do_GET(self) -> None:
-        url = urllib.parse.urlparse(self.path)
-        query = dict(urllib.parse.parse_qsl(url.query))
+    def answer(self, handle: Any, *args: Any) -> None:
         try:
-            self.handle_get(url.path, query)
-        except Exception as error:
-            traceback.print_exc()
-            self.send({"error": f"{type(error).__name__}: {error}"}, 500)
-
-    def do_POST(self) -> None:
-        try:
-            self.handle_post(self.path, self.body())
+            handle(*args)
+        except KeyError as error:
+            self.send({"error": f"Not found: {error}"}, 400)
         except ValueError as error:
             self.send({"error": str(error)}, 400)
         except Exception as error:
             traceback.print_exc()
             self.send({"error": f"{type(error).__name__}: {error}"}, 500)
+
+    def do_GET(self) -> None:
+        url = urllib.parse.urlparse(self.path)
+        query = dict(urllib.parse.parse_qsl(url.query))
+        self.answer(self.handle_get, url.path, query)
+
+    def do_POST(self) -> None:
+        self.answer(lambda: self.handle_post(self.path, self.body()))
 
     def handle_get(self, path: str, query: dict) -> None:
         if path == "/":
@@ -180,22 +165,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/exercises":
             self.send(engine.list_exercises())
         elif path == "/api/exercise_file":
-            folder = os.path.join(engine.EXERCISES_DIR,
-                                  engine.slug(query["ex"]))
-            if query["which"] == "solution":
-                names = ["solution.py"]
-            else:
-                names = ["rules.json", "criteria.py"]
-            paths = [os.path.join(folder, name) for name in names]
-            existing = [path for path in paths if os.path.exists(path)]
-            text = engine.read_text(existing[0]) if existing else ""
-            self.send({"text": text})
+            self.send({"text": exercise_file(query["ex"], query["which"])})
+        elif path == "/api/validate":
+            self.send(engine.validate_exercise(query["ex"]))
         elif path == "/api/students":
             records = engine.load_state(query["ex"])["students"].values()
             rows = sorted(
                 (summary(record) for record in records),
-                key=lambda s: (s["class"],
-                               engine.strip_accents(s["name"]).lower()))
+                key=lambda row: (row["class"],
+                                 engine.strip_accents(row["name"]).lower()))
             self.send({"students": rows, "progress": _jobs.get(query["ex"])})
         elif path == "/api/student":
             self.send(student_details(query["ex"], query["id"]))
@@ -228,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_post(self, path: str, body: dict) -> None:
         if path == "/api/exercises":
             ex_id = engine.save_exercise(body["id"], body.get("solution"),
-                                         body.get("criteria"))
+                                         body.get("rules"))
             exercises = engine.list_exercises()
             self.send(next(exercise for exercise in exercises
                            if exercise["id"] == ex_id))
@@ -248,17 +226,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send({"error": "not found"}, 404)
 
 
-def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}"
+def make_server(port: int = PORT) -> ThreadingHTTPServer:
+    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
+def serve(port: int = PORT, open_browser: bool = True) -> None:
+    server = make_server(port)
+    url = f"http://127.0.0.1:{server.server_address[1]}"
     print(f"Pythia running at {url}")
     print("Close this window or press Ctrl+C to stop.")
-    threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    if open_browser:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
-
-
-if __name__ == "__main__":
-    main()
+    finally:
+        server.server_close()

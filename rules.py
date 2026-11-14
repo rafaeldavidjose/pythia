@@ -1,25 +1,42 @@
 """
-Reads exercises/<id>/rules.json and builds the same criteria a criteria.py
-would. Each test names a check ("call" or "program") and gives its
-parameters, so a simple exercise needs no Python.
+Reads exercises/<id>/rules.json. As in an egrader rules file, every test
+names a check and gives its params. The params are checked against the
+check's function in checks.py, so a typo is reported with its place in the
+file instead of failing silently while grading.
 """
 
 import json
 from typing import Any
 
-from checks import call, criterion, named, program
+import checks
 
 TOP_KEYS = {"title", "load_inputs", "ai_trap", "criteria"}
-CRITERION_KEYS = {"name", "points", "description", "hint", "review", "tests"}
-CALL_KEYS = {
-    "check", "function", "args", "expected", "output", "output_contains",
-    "output_excludes", "mutates", "inputs", "check_return", "weight", "hint",
-    "label", "names",
+CRITERION_KEYS = {
+    "criterion", "points", "description", "hint", "review", "tests",
 }
-PROGRAM_KEYS = {
-    "check", "inputs", "contains", "excludes", "must_finish", "weight",
-    "hint", "label",
+TEST_KEYS = {"name", "params", "weight", "hint", "label"}
+
+PARAM_TYPES = {
+    "function": str, "args": list, "inputs": list, "contains": list,
+    "excludes": list, "names": dict, "position": int, "must_finish": bool,
 }
+TYPE_NAMES = {
+    str: "a string", list: "a list", dict: "an object", int: "an integer",
+    bool: "true or false", float: "a number",
+}
+
+
+def _check_type(value: Any, expected: type, key: str, where: str) -> None:
+    if expected is float:
+        valid = isinstance(value, (int, float))
+    elif expected is int:
+        valid = isinstance(value, int)
+    else:
+        valid = isinstance(value, expected)
+    if expected is not bool and isinstance(value, bool):
+        valid = False
+    if not valid:
+        raise ValueError(f"{where}: '{key}' must be {TYPE_NAMES[expected]}")
 
 
 def _check_keys(item: Any, allowed: set[str], where: str) -> None:
@@ -37,97 +54,98 @@ def _require(item: dict, key: str, where: str) -> Any:
     return item[key]
 
 
-def _check_number(value: Any, key: str, where: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{where}: '{key}' must be a number")
-
-
-def _check_list(value: Any, key: str, where: str) -> None:
-    if not isinstance(value, list):
-        raise ValueError(f"{where}: '{key}' must be a list")
-
-
-def _name_arguments(args: list, names: dict, where: str) -> None:
-    """Show a list or dict argument under a short name in the report."""
-    for position, name in names.items():
-        index = int(position)
-        if index >= len(args) or not isinstance(args[index], (list, dict)):
-            raise ValueError(f"{where}: 'names' only works on list or "
-                             f"object arguments (position {position})")
-        named(args[index], name)
-
-
-def _build_call(item: dict, where: str, has_solution: bool) -> dict:
-    _check_keys(item, CALL_KEYS, where)
-    function = _require(item, "function", where)
-    args = item.get("args", [])
-    _check_list(args, "args", where)
-    _name_arguments(args, item.get("names", {}), where)
-    if not has_solution:
-        needs_solution = item.get("mutates") or item.get("output") == "equal"
-        if needs_solution:
-            raise ValueError(f"{where}: 'mutates' and 'output' need "
-                             "a solution.py to compare with")
-        if item.get("check_return", True) and "expected" not in item:
-            raise ValueError(f"{where}: add 'expected' or a solution.py")
-    options = {
-        key: value for key, value in item.items()
-        if key not in ("check", "function", "args", "names")
-    }
-    return call(function, *args, **options)
-
-
-def _build_program(item: dict, where: str) -> dict:
-    _check_keys(item, PROGRAM_KEYS, where)
-    inputs = [str(answer) for answer in _require(item, "inputs", where)]
-    options = {key: value for key, value in item.items()
-               if key not in ("check", "inputs")}
-    return program(inputs, **options)
+def _check_params(name: str, params: dict, where: str) -> None:
+    accepted = {parameter.name: parameter
+                for parameter in checks.parameters(name)}
+    for key, value in params.items():
+        if key not in accepted:
+            raise ValueError(f"{where}: check '{name}' has no param '{key}' "
+                             f"(params: {', '.join(accepted)})")
+        if key in PARAM_TYPES:
+            _check_type(value, PARAM_TYPES[key], key, where)
+    for key, parameter in accepted.items():
+        if parameter.default is parameter.empty and key not in params:
+            raise ValueError(f"{where}: check '{name}' needs param '{key}'")
+    position = params.get("position", 0)
+    if "args" in params and name == "mutates":
+        if not 0 <= position < len(params["args"]):
+            raise ValueError(f"{where}: 'position' {position} is not "
+                             f"one of the args")
 
 
 def _build_test(item: Any, where: str, has_solution: bool) -> dict:
-    check = item.get("check") if isinstance(item, dict) else None
-    if check == "call":
-        return _build_call(item, where, has_solution)
-    if check == "program":
-        return _build_program(item, where)
-    raise ValueError(f"{where}: 'check' must be \"call\" or \"program\"")
+    _check_keys(item, TEST_KEYS, where)
+    name = _require(item, "name", where)
+    if name not in checks.available():
+        raise ValueError(f"{where}: unknown check '{name}' "
+                         f"(checks: {', '.join(checks.available())})")
+    params = item.get("params", {})
+    _check_type(params, dict, "params", where)
+    _check_params(name, params, where)
+    if not has_solution and checks.needs_solution(name, params):
+        raise ValueError(f"{where}: add 'expected' to the params "
+                         "or a solution.py to compare with")
+    weight = item.get("weight", 1)
+    _check_type(weight, float, "weight", where)
+    if weight < 0:
+        raise ValueError(f"{where}: 'weight' cannot be negative")
+    label = item.get("label") or checks.default_label(
+        name, checks.decode(params))
+    return {"name": name, "params": params, "weight": weight,
+            "hint": item.get("hint", ""), "label": label}
 
 
 def _build_criterion(item: Any, number: int, has_solution: bool) -> dict:
     where = f"criterion {number}"
     _check_keys(item, CRITERION_KEYS, where)
-    name = _require(item, "name", where)
+    name = _require(item, "criterion", where)
+    _check_type(name, str, "criterion", where)
     where += f" ({name})"
     points = _require(item, "points", where)
-    _check_number(points, "points", where)
-    tests_data = _require(item, "tests", where)
-    _check_list(tests_data, "tests", where)
+    _check_type(points, float, "points", where)
+    tests_data = item.get("tests", [])
+    _check_type(tests_data, list, "tests", where)
     tests = [
         _build_test(test, f"{where}, test {index}", has_solution)
         for index, test in enumerate(tests_data, 1)
     ]
-    options = {key: value for key, value in item.items()
-               if key in ("description", "hint", "review")}
-    return criterion(name, points, tests, **options)
+    return {
+        "name": name,
+        "points": points,
+        "description": item.get("description", ""),
+        "hint": item.get("hint", ""),
+        "review": bool(item.get("review", False)),
+        "tests": tests,
+    }
 
 
-def load_rules(path: str, has_solution: bool) -> dict:
-    """Return title, load_inputs, ai_trap and criteria, like criteria.py."""
+def parse_rules(text: str, has_solution: bool) -> dict:
+    """Return title, load_inputs, ai_trap and the criteria with their tests."""
     try:
-        with open(path, encoding="utf-8") as file:
-            data = json.load(file)
+        data = json.loads(text)
     except json.JSONDecodeError as error:
         raise ValueError(f"rules.json is not valid JSON: {error}") from None
     _check_keys(data, TOP_KEYS, "rules.json")
+    for key in ("load_inputs", "ai_trap"):
+        _check_type(data.get(key, []), list, key, "rules.json")
     criteria_data = _require(data, "criteria", "rules.json")
-    _check_list(criteria_data, "criteria", "rules.json")
+    _check_type(criteria_data, list, "criteria", "rules.json")
+    criteria = [
+        _build_criterion(item, number, has_solution)
+        for number, item in enumerate(criteria_data, 1)
+    ]
+    names = [criterion["name"] for criterion in criteria]
+    for name in names:
+        if names.count(name) > 1:
+            raise ValueError(f"rules.json: two criteria are called '{name}'")
     return {
-        "title": data.get("title"),
+        "title": str(data.get("title") or ""),
         "load_inputs": [str(answer) for answer in data.get("load_inputs", [])],
         "ai_trap": [str(word) for word in data.get("ai_trap", [])],
-        "criteria": [
-            _build_criterion(item, number, has_solution)
-            for number, item in enumerate(criteria_data, 1)
-        ],
+        "criteria": criteria,
     }
+
+
+def load_rules(path: str, has_solution: bool) -> dict:
+    with open(path, encoding="utf-8-sig") as file:
+        return parse_rules(file.read(), has_solution)

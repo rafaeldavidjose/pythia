@@ -116,10 +116,10 @@ h3 { font-size: 14px; margin: 0; }
 .criterion-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .criterion input[type=number] { width: 72px; }
 .tests { list-style: none; margin: 0 0 8px; padding: 0; font-size: 13px; }
-.tests li { margin-bottom: 3px; }
-.failures { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
-.failures li { margin-bottom: 4px; }
-.failures .hint { color: var(--muted); }
+.tests li { margin-bottom: 4px; }
+.tests .details { margin: 3px 0 6px 22px; }
+.tests .details pre { margin: 4px 0; }
+.hint { color: var(--muted); font-size: 13px; }
 .notice, .alert { padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
 .notice { background: var(--warn-bg); color: var(--warn); }
 .alert { background: var(--bad-bg); color: var(--bad); }
@@ -216,8 +216,8 @@ label.check { display: inline-flex; gap: 6px; align-items: center; }
           <input type="text" id="newId" placeholder="Exercise_2">
           <label for="newSolution">Solution (solution.py, optional)</label>
           <input type="file" id="newSolution" accept=".py">
-          <label for="newCriteria">Rules (rules.json or criteria.py)</label>
-          <input type="file" id="newCriteria" accept=".json,.py">
+          <label for="newRules">Rules (rules.json)</label>
+          <input type="file" id="newRules" accept=".json">
           <span></span>
           <div>
             <button id="saveExerciseButton" class="primary">Save exercise</button>
@@ -322,18 +322,28 @@ function renderExercises() {
       ${e.ai_trap.length ? `<p class="muted small">AI trap: ${e.ai_trap.map(esc).join(", ")}</p>` : ""}
       <div class="actions" style="margin-bottom:0">
         <button data-show="${esc(e.id)}|solution">Show solution</button>
-        <button data-show="${esc(e.id)}|criteria">Show rules</button>
+        <button data-show="${esc(e.id)}|rules">Show rules</button>
+        <button data-validate="${esc(e.id)}"
+          title="Grades solution.py with rules.json. It has to pass every test.">Check rules</button>
       </div>
       <pre hidden id="file_${esc(e.id)}"></pre>
     </div>`).join("") || '<div class="empty">No exercises yet.</div>';
 }
 
 $("#exerciseCards").addEventListener("click", async event => {
-  const button = event.target.closest("[data-show]");
+  const button = event.target.closest("[data-show], [data-validate]");
   if (!button) return;
-  const [id, which] = button.dataset.show.split("|");
-  const data = await api(`/api/exercise_file?ex=${encodeURIComponent(id)}&which=${which}`);
+  const id = button.dataset.validate || button.dataset.show.split("|")[0];
   const pre = document.getElementById("file_" + id);
+  if (button.dataset.validate) {
+    pre.textContent = "Checking...";
+    pre.hidden = false;
+    const result = await api(`/api/validate?ex=${encodeURIComponent(id)}`);
+    pre.textContent = (result.ok ? "OK\n\n" : "Problems found\n\n") + result.messages.join("\n");
+    return;
+  }
+  const which = button.dataset.show.split("|")[1];
+  const data = await api(`/api/exercise_file?ex=${encodeURIComponent(id)}&which=${which}`);
   pre.textContent = data.text || "(empty)";
   pre.hidden = false;
 });
@@ -342,11 +352,11 @@ $("#saveExerciseButton").onclick = async () => {
   const id = $("#newId").value.trim();
   if (!id) return toast("Enter the exercise name.");
   const read = input => input.files[0] ? input.files[0].text() : Promise.resolve(null);
-  const [solution, criteria] = await Promise.all([read($("#newSolution")), read($("#newCriteria"))]);
+  const [solution, rules] = await Promise.all([read($("#newSolution")), read($("#newRules"))]);
   try {
-    const info = await api("/api/exercises", {id, solution, criteria});
+    const info = await api("/api/exercises", {id, solution, rules});
     toast(info.error ? "Saved, but: " + info.error : "Exercise saved.");
-    $("#newId").value = $("#newSolution").value = $("#newCriteria").value = "";
+    $("#newId").value = $("#newSolution").value = $("#newRules").value = "";
     await loadExercises(info.id);
   } catch (e) {
     toast(e.message);
@@ -563,23 +573,25 @@ function criterionClass(c, value) {
   return value <= 0 ? "bad" : "partial";
 }
 
-function renderTests(c) {
-  if (!c.results) return "";
-  return '<ul class="tests">' + c.results.map((test, index) => {
-    const pill = test.ok ? ["p-ok", "passed"]
-      : test.ran ? ["p-bad", "failed"] : ["p-warn", "not run"];
-    return `<li><span class="pill ${pill[0]}">${pill[1]}</span> Test ${index + 1}: ${esc(test.label)}</li>`;
-  }).join("") + "</ul>";
+function renderFailure(failure) {
+  const output = failure.expected_output === undefined ? ""
+    : `<pre>Expected:\n${esc(failure.expected_output)}\n\nGot:\n${esc(failure.actual_output)}</pre>`;
+  return `<div>${esc(failure.message)}</div>${output}`;
 }
 
-function renderFailures(c) {
-  if (!c.failures.length) return "";
-  return '<ul class="failures">' + c.failures.map(f => `<li>
-      ${esc(f.message)}
-      ${f.expected_output !== undefined
-        ? `<pre>Expected:\n${esc(f.expected_output)}\n\nGot:\n${esc(f.actual_output)}</pre>` : ""}
-      ${f.hint ? `<div class="hint">Sugestão: ${esc(f.hint)}</div>` : ""}
-    </li>`).join("") + "</ul>";
+function renderTest(test, index) {
+  const [pillClass, status] = test.ok ? ["p-ok", "passed"]
+    : test.ran ? ["p-bad", "failed"] : ["p-warn", "not run"];
+  const details = test.failures.map(renderFailure).join("")
+    + (test.hint ? `<div class="hint">Sugestão: ${esc(test.hint)}</div>` : "");
+  return `<li><span class="pill ${pillClass}">${status}</span> Test ${index + 1}: ${esc(test.label)}
+    ${details ? `<div class="details">${details}</div>` : ""}</li>`;
+}
+
+function renderTests(c) {
+  const tests = c.tests || [];
+  const hint = c.hint ? `<div class="hint">Sugestão: ${esc(c.hint)}</div>` : "";
+  return `<ul class="tests">${tests.map(renderTest).join("")}</ul>${hint}`;
 }
 
 function renderCriterion(c, index) {
@@ -596,7 +608,6 @@ function renderCriterion(c, index) {
         step="0.25" value="${value}"> / ${grade(c.points)}</label>
     </div>
     ${renderTests(c)}
-    ${renderFailures(c)}
     <textarea class="comment-input" rows="1"
       placeholder="Optional comment (shown in the report, in Portuguese)">${esc(pageData.comments[c.name] || "")}</textarea>
   </div>`;

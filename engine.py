@@ -1,26 +1,27 @@
 """
 Grader engine: exercises, importing submissions, evaluation, reports and export.
-No language model is involved: grades come only from the tests defined in
-exercises/<id>/rules.json (or criteria.py), compared against solution.py.
+No language model is involved: grades come only from the tests in
+exercises/<id>/rules.json, run by the checks in checks.py.
 
 Everything a student reads (reports, test messages) is in Portuguese.
 """
 
 import csv
-import importlib.util
 import io
 import json
 import os
-import pickle
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import traceback
 import unicodedata
 import zipfile
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable
 
 import rules
 import simple_pdf
@@ -33,9 +34,10 @@ STUDENTS_FILE = os.path.join(BASE, "students.csv")
 
 STUDENT_TIMEOUT = 10  # seconds for all of a student's tests
 TEST_TIMEOUT = 5  # seconds per test, used to isolate an infinite loop
+WORKERS = 4  # students graded at the same time
 
-if BASE not in sys.path:
-    sys.path.insert(0, BASE)
+STATE_LOCK = threading.Lock()  # state.json is read and written as a whole
+NOT_RUN = {"ok": False, "failures": []}
 
 
 def strip_accents(text: str) -> str:
@@ -51,7 +53,7 @@ def slug(text: str) -> str:
 def read_text(path: str) -> str:
     with open(path, "rb") as file:
         raw = file.read()
-    for encoding in ("utf-8", "cp1252", "latin-1"):
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
         try:
             return raw.decode(encoding)
         except UnicodeDecodeError:
@@ -142,30 +144,21 @@ def find_student(
 
 
 # Exercises
-def _load_criteria_py(folder: str, ex_id: str) -> dict:
-    spec = importlib.util.spec_from_file_location(
-        "criteria_" + slug(ex_id), os.path.join(folder, "criteria.py")
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return {
-        "title": getattr(module, "TITLE", ex_id),
-        "load_inputs": list(getattr(module, "LOAD_INPUTS", [])),
-        "ai_trap": [str(word) for word in getattr(module, "AI_TRAP", [])],
-        "criteria": module.CRITERIA,
-    }
+def exercise_folder(ex_id: str) -> str:
+    folder = os.path.join(EXERCISES_DIR, ex_id)
+    if not ex_id or not os.path.isdir(folder):
+        raise ValueError(f"Exercise '{ex_id}' not found in {EXERCISES_DIR}")
+    return folder
 
 
 def load_exercise(ex_id: str) -> dict:
-    """Load rules.json if the exercise has one, otherwise criteria.py."""
-    folder = os.path.join(EXERCISES_DIR, ex_id)
+    folder = exercise_folder(ex_id)
     solution = os.path.join(folder, "solution.py")
     has_solution = os.path.exists(solution)
     rules_file = os.path.join(folder, "rules.json")
-    if os.path.exists(rules_file):
-        definition = rules.load_rules(rules_file, has_solution)
-    else:
-        definition = _load_criteria_py(folder, ex_id)
+    if not os.path.exists(rules_file):
+        raise ValueError(f"{ex_id}: rules.json is missing")
+    definition = rules.load_rules(rules_file, has_solution)
     return {
         "id": ex_id,
         "title": definition["title"] or ex_id,
@@ -193,55 +186,42 @@ def list_exercises() -> list[dict]:
             "ai_trap": [],
             "students": len(load_state(ex_id)["students"]),
         }
-        has_rules = os.path.exists(os.path.join(folder, "rules.json"))
-        has_criteria = os.path.exists(os.path.join(folder, "criteria.py"))
-        has_solution = os.path.exists(os.path.join(folder, "solution.py"))
-        if not has_rules and not has_criteria:
-            info["error"] = "rules.json or criteria.py is missing"
-        elif not has_rules and not has_solution:
-            info["error"] = "solution.py is missing"
-        else:
-            try:
-                ex = load_exercise(ex_id)
-                info["title"] = ex["title"]
-                info["criteria"] = [
-                    {
-                        "name": criterion["name"],
-                        "points": criterion["points"],
-                        "tests": len(criterion["tests"]),
-                        "description": criterion["description"],
-                        "review": criterion["review"],
-                    }
-                    for criterion in ex["criteria"]
-                ]
-                info["total"] = sum(
-                    criterion["points"] for criterion in ex["criteria"])
-                info["ai_trap"] = ex["ai_trap"]
-            except Exception as error:
-                info["error"] = type(error).__name__ + ": " + str(error)
+        try:
+            ex = load_exercise(ex_id)
+            info["title"] = ex["title"]
+            info["criteria"] = [
+                {
+                    "name": criterion["name"],
+                    "points": criterion["points"],
+                    "tests": len(criterion["tests"]),
+                    "description": criterion["description"],
+                    "review": criterion["review"],
+                }
+                for criterion in ex["criteria"]
+            ]
+            info["total"] = sum(
+                criterion["points"] for criterion in ex["criteria"])
+            info["ai_trap"] = ex["ai_trap"]
+        except Exception as error:
+            info["error"] = str(error)
         result.append(info)
     return result
 
 
 def save_exercise(
-    ex_id: str, solution: str | None, criteria: str | None
+    ex_id: str, solution: str | None, rules_text: str | None
 ) -> str:
+    """Write the files that were given; the others stay as they were."""
     ex_id = slug(ex_id)
     folder = os.path.join(EXERCISES_DIR, ex_id)
     os.makedirs(folder, exist_ok=True)
-    files = {"solution.py": solution}
-    if criteria is not None:
-        # JSON starts with "{", anything else is the Python criteria file
-        is_rules = criteria.lstrip().startswith("{")
-        files["rules.json" if is_rules else "criteria.py"] = criteria
-        other = "criteria.py" if is_rules else "rules.json"
-        if os.path.exists(os.path.join(folder, other)):
-            os.remove(os.path.join(folder, other))
+    files = {"solution.py": solution, "rules.json": rules_text}
     for filename, content in files.items():
         if content is None:
             continue
         path = os.path.join(folder, filename)
-        with open(path, "w", encoding="utf-8") as file:
+        # Keep the line endings of the uploaded file as they are
+        with open(path, "w", encoding="utf-8", newline="") as file:
             file.write(content)
     return ex_id
 
@@ -323,20 +303,24 @@ def group_submissions(files: list[tuple[str, bytes]]) -> dict[str, dict]:
         if len(set(parts)) != 1:
             break
         root.append(parts[0])
-    all_at_root = all(len(path.split("/")) == len(root) + 1
-                      for path, _ in py_files)
-    root_is_student = bool(root) and bool(
-        MOODLE_FOLDER.match(root[-1]) or STUDENT_NUMBER.search(root[-1]))
+    # When the chosen folder is one student's folder, everything is theirs
+    student_root = None
+    for index in range(len(root)):
+        if MOODLE_FOLDER.match(root[index]):
+            student_root = index
+            break
+    if student_root is None and root and STUDENT_NUMBER.search(root[-1]):
+        student_root = len(root) - 1
 
     groups = {}
     for path, data in py_files:
         parts = path.split("/")
-        if len(parts) - len(root) > 1:
+        if student_root is not None:
+            key = "/".join(root[:student_root + 1])
+            folder = root[student_root]
+        elif len(parts) - len(root) > 1:
             key = "/".join(parts[:len(root) + 1])
             folder = parts[len(root)]
-        elif all_at_root and root_is_student:
-            key = "/".join(root)
-            folder = root[-1]
         else:
             key = path
             folder = ""
@@ -417,40 +401,31 @@ def read_folder(path: str) -> list[tuple[str, bytes]]:
 
 def import_submissions(ex_id: str, files: list[tuple[str, bytes]]) -> dict:
     students = load_students()
-    state = load_state(ex_id)
     added, updated = [], []
-    for key, group in group_submissions(files).items():
-        ident = identify(group, students)
-        student_id = ident["number"] or slug(ident["name"] + "_" + key)[:60]
-        folder = os.path.join(data_dir(ex_id), "submissions", student_id)
-        if os.path.isdir(folder):
-            shutil.rmtree(folder)
-        os.makedirs(folder)
-        names = []
-        for name, data in group["files"]:
-            safe = re.sub(r"[^\w.\- ]", "_", name)
-            while safe in names:
-                safe = "_" + safe
-            with open(os.path.join(folder, safe), "wb") as file:
-                file.write(data)
-            names.append(safe)
-        if student_id in state["students"]:
-            updated.append(student_id)
-        else:
-            added.append(student_id)
-        state["students"][student_id] = {
-            "id": student_id,
-            **ident,
-            "source": group["folder"] or key,
-            "files": sorted(names),
-            "file": pick_file(names, ex_id, ident["number"]),
-            "evaluation": None,
-            "grades": {},
-            "comments": {},
-            "notes": "",
-            "finalized": False,
-        }
-    save_state(ex_id, state)
+    with STATE_LOCK:
+        state = load_state(ex_id)
+        for key, group in group_submissions(files).items():
+            ident = identify(group, students)
+            student_id = ident["number"] or slug(
+                ident["name"] + "_" + key)[:60]
+            names = _store_files(ex_id, student_id, group["files"])
+            if student_id in state["students"]:
+                updated.append(student_id)
+            else:
+                added.append(student_id)
+            state["students"][student_id] = {
+                "id": student_id,
+                **ident,
+                "source": group["folder"] or key,
+                "files": sorted(names),
+                "file": pick_file(names, ex_id, ident["number"]),
+                "evaluation": None,
+                "grades": {},
+                "comments": {},
+                "notes": "",
+                "finalized": False,
+            }
+        save_state(ex_id, state)
     return {
         "added": len(added),
         "updated": len(updated),
@@ -462,9 +437,26 @@ def import_submissions(ex_id: str, files: list[tuple[str, bytes]]) -> dict:
     }
 
 
+def _store_files(ex_id: str, student_id: str,
+                 files: list[tuple[str, bytes]]) -> list[str]:
+    folder = os.path.join(data_dir(ex_id), "submissions", student_id)
+    if os.path.isdir(folder):
+        shutil.rmtree(folder)
+    os.makedirs(folder)
+    names = []
+    for name, data in files:
+        safe = re.sub(r"[^\w.\- ]", "_", name)
+        while safe in names:
+            safe = "_" + safe
+        with open(os.path.join(folder, safe), "wb") as file:
+            file.write(data)
+        names.append(safe)
+    return names
+
+
 # Evaluation
 def find_ai_trap(ex: dict, source: str) -> list[dict]:
-    """Lines containing an AI_TRAP word. Only a warning for the teacher."""
+    """Lines containing an ai_trap word. Only a warning for the teacher."""
     hits = []
     for word in ex.get("ai_trap", []):
         for number, line in enumerate(source.splitlines(), 1):
@@ -482,7 +474,7 @@ def _run_tests(
         student_copy = os.path.join(
             temp_dir, os.path.basename(student_file))
         shutil.copy(student_file, student_copy)
-        job_file = os.path.join(temp_dir, "_job.pkl")
+        job_file = os.path.join(temp_dir, "_job.json")
         result_file = os.path.join(temp_dir, "_result.json")
         job = {
             "student": student_copy,
@@ -490,8 +482,8 @@ def _run_tests(
             "load_inputs": ex["load_inputs"],
             "tests": tests,
         }
-        with open(job_file, "wb") as file:
-            pickle.dump(job, file)
+        with open(job_file, "w", encoding="utf-8") as file:
+            json.dump(job, file)
         command = [sys.executable, "-I", RUNNER, job_file, result_file]
         try:
             subprocess.run(command, cwd=temp_dir, timeout=timeout,
@@ -511,97 +503,101 @@ def _run_tests(
             return json.load(file)
 
 
+def _run_all(student_file: str, ex: dict,
+             tests: list[dict]) -> tuple[dict, list[dict]]:
+    batch = _run_tests(student_file, ex, tests, STUDENT_TIMEOUT)
+    if batch is not None:
+        return batch["load"], batch["results"]
+
+    if _run_tests(student_file, ex, [], TEST_TIMEOUT) is None:
+        error = ("o programa não terminou ao ser carregado "
+                 "(possível ciclo infinito)")
+        return {"ok": False, "error": error}, [NOT_RUN] * len(tests)
+
+    # Something never finishes: run the tests one by one to find it
+    load_info = {"ok": True, "error": None}
+    results = []
+    for test in tests:
+        single = _run_tests(student_file, ex, [test], TEST_TIMEOUT)
+        if single is None:
+            message = (f"não terminou em {TEST_TIMEOUT} s "
+                       "(possível ciclo infinito)")
+            results.append({"ok": False, "failures": [
+                {"message": message, "timeout": True}]})
+        else:
+            load_info = single["load"]
+            results.append(single["results"][0])
+    return load_info, results
+
+
 def _score_criterion(criterion: dict, results: list[dict]) -> dict:
     """Combine the results of a criterion's tests into its automatic grade."""
     tests = criterion["tests"]
     total_weight = sum(test["weight"] for test in tests) or 1
-    passed_weight = 0
-    passed = 0
-    failures = []
+    passed_weight = sum(test["weight"] for test, result in zip(tests, results)
+                        if result["ok"])
     hints_used = set()
+    test_results = []
     for test, result in zip(tests, results):
-        if result["ok"]:
-            passed_weight += test["weight"]
-            passed += 1
-            continue
-        hint = test.get("hint") or ""
-        for item in result["failures"]:
-            if any(known["message"] == item["message"] for known in failures):
-                continue
-            item = dict(item)
-            if hint and hint not in hints_used:
-                item["hint"] = hint
-                hints_used.add(hint)
-            failures.append(item)
-    if failures and criterion.get("hint") and not hints_used:
-        failures.append({"message": "", "hint": criterion["hint"]})
+        ran = result["ok"] or bool(result["failures"])
+        item = {"label": test["label"], "ok": result["ok"], "ran": ran,
+                "failures": result["failures"]}
+        # The same hint is shown once, at the first test that needs it
+        if ran and not result["ok"] and test["hint"]:
+            if test["hint"] not in hints_used:
+                item["hint"] = test["hint"]
+                hints_used.add(test["hint"])
+        test_results.append(item)
+
+    failed = any(item["ran"] and not item["ok"] for item in test_results)
     raw_grade = criterion["points"] * passed_weight / total_weight
-    test_results = [
-        {"label": test["label"], "ok": result["ok"],
-         "ran": result["ok"] or bool(result["failures"])}
-        for test, result in zip(tests, results)
-    ]
     return {
         "name": criterion["name"],
         "points": criterion["points"],
         "auto": round(raw_grade * 4) / 4,
-        "passed": passed,
+        "passed": sum(1 for item in test_results if item["ok"]),
         "total": len(tests),
-        "failures": failures,
-        "results": test_results,
+        "tests": test_results,
+        "hint": criterion["hint"] if failed and not hints_used else "",
         "review": criterion["review"],
     }
 
 
-def evaluate_student(ex: dict, record: dict) -> dict:
-    folder = os.path.join(DATA_DIR, ex["id"], "submissions", record["id"])
-    student_file = None
-    if record.get("file"):
-        student_file = os.path.join(folder, record["file"])
-    now = time.strftime("%Y-%m-%d %H:%M")
-    no_results = {"ok": False, "failures": []}
-
-    if not student_file or not os.path.exists(student_file):
-        criteria = [
-            _score_criterion(criterion, [no_results] * len(criterion["tests"]))
-            for criterion in ex["criteria"]
-        ]
-        load_info = {"ok": False, "error": "nenhum ficheiro .py entregue"}
-        return {"load": load_info, "criteria": criteria, "ai_trap": [],
-                "date": now}
-
-    tests = [test for criterion in ex["criteria"] for test in criterion["tests"]]
-    batch = _run_tests(student_file, ex, tests, STUDENT_TIMEOUT)
-    if batch is not None:
-        load_info = batch["load"]
-        results = batch["results"]
-    else:
-        # Something never finishes: run the tests one by one to find it
-        load_info = {"ok": True, "error": None}
-        results = []
-        for test in tests:
-            single = _run_tests(student_file, ex, [test], TEST_TIMEOUT)
-            if single is None:
-                message = (f"{test['label']}: não terminou em "
-                           f"{TEST_TIMEOUT} s (possível ciclo infinito)")
-                results.append({"ok": False, "failures": [
-                    {"message": message, "timeout": True}]})
-            else:
-                load_info = single["load"]
-                results.append(single["results"][0])
-
-    if (load_info.get("error") or "").startswith("SyntaxError"):
-        results = [no_results] * len(tests)
-
+def _score_all(ex: dict, results: list[dict]) -> list[dict]:
     criteria = []
     start = 0
     for criterion in ex["criteria"]:
         end = start + len(criterion["tests"])
         criteria.append(_score_criterion(criterion, results[start:end]))
         start = end
+    return criteria
+
+
+def evaluate_file(ex: dict, student_file: str | None) -> dict:
+    """Run every test of the exercise on one file and score the criteria."""
+    now = time.strftime("%Y-%m-%d %H:%M")
+    tests = [{"name": test["name"], "params": test["params"]}
+             for criterion in ex["criteria"] for test in criterion["tests"]]
+    if not student_file or not os.path.exists(student_file):
+        load_info = {"ok": False, "error": "nenhum ficheiro .py entregue"}
+        return {"load": load_info,
+                "criteria": _score_all(ex, [NOT_RUN] * len(tests)),
+                "ai_trap": [], "date": now}
+
+    load_info, results = _run_all(student_file, ex, tests)
+    if (load_info.get("error") or "").startswith("SyntaxError"):
+        results = [NOT_RUN] * len(tests)
     source = read_text(student_file)
-    return {"load": load_info, "criteria": criteria,
+    return {"load": load_info, "criteria": _score_all(ex, results),
             "ai_trap": find_ai_trap(ex, source), "date": now}
+
+
+def evaluate_student(ex: dict, record: dict) -> dict:
+    student_file = None
+    if record.get("file"):
+        student_file = os.path.join(DATA_DIR, ex["id"], "submissions",
+                                    record["id"], record["file"])
+    return evaluate_file(ex, student_file)
 
 
 def apply_evaluation(record: dict, evaluation: dict) -> None:
@@ -613,6 +609,85 @@ def apply_evaluation(record: dict, evaluation: dict) -> None:
     }
     record["comments"] = {}
     record["finalized"] = False
+
+
+def select_students(ex_id: str, ids: list[str] | None = None,
+                    regrade: bool = False) -> list[str]:
+    """
+    Students to grade: the given ids, or the ones never graded (every one
+    with regrade). Finalized students are never graded again.
+    """
+    students = load_state(ex_id)["students"]
+    if not ids:
+        ids = [student_id for student_id, record in students.items()
+               if regrade or not record.get("evaluation")]
+    return [student_id for student_id in ids
+            if student_id in students
+            and not students[student_id].get("finalized")]
+
+
+def grade_students(
+    ex_id: str, ids: list[str],
+    on_progress: Callable[[str, bool], None] | None = None,
+) -> None:
+    """Grade these students, a few at a time, saving each result."""
+    ex = load_exercise(ex_id)
+
+    def grade_one(student_id: str) -> None:
+        record = load_state(ex_id)["students"][student_id]
+        evaluation = evaluate_student(ex, record)
+        with STATE_LOCK:
+            state = load_state(ex_id)
+            apply_evaluation(state["students"][student_id], evaluation)
+            save_state(ex_id, state)
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        futures = {pool.submit(grade_one, student_id): student_id
+                   for student_id in ids}
+        for future in as_completed(futures):
+            error = future.exception()
+            if error is not None:
+                traceback.print_exception(type(error), error,
+                                          error.__traceback__)
+            if on_progress:
+                on_progress(futures[future], error is None)
+
+
+def validate_exercise(ex_id: str) -> dict:
+    """
+    Check rules.json and grade solution.py with it. The solution has to pass
+    every test, otherwise a test or an expected value is wrong.
+    """
+    try:
+        ex = load_exercise(ex_id)
+    except Exception as error:
+        return {"ok": False, "messages": [str(error)]}
+    tests = sum(len(criterion["tests"]) for criterion in ex["criteria"])
+    points = sum(criterion["points"] for criterion in ex["criteria"])
+    messages = [f"rules.json is valid: {len(ex['criteria'])} criteria, "
+                f"{tests} tests, {grade_text(points)} points."]
+    if not ex["solution"]:
+        messages.append("There is no solution.py, so only the rules "
+                        "were checked.")
+        return {"ok": True, "messages": messages}
+
+    evaluation = evaluate_file(ex, ex["solution"])
+    if evaluation["load"]["error"]:
+        messages.append(f"solution.py: {evaluation['load']['error']}")
+    passed = 0
+    for criterion in evaluation["criteria"]:
+        passed += criterion["passed"]
+        for number, test in enumerate(criterion["tests"], 1):
+            if test["ok"]:
+                continue
+            problems = "; ".join(failure["message"]
+                                 for failure in test["failures"])
+            messages.append(f"{criterion['name']}, test {number} "
+                            f"({test['label']}): "
+                            f"{problems or 'not run'}")
+    ok = passed == tests and not evaluation["load"]["error"]
+    messages.append(f"solution.py passes {passed} of {tests} tests.")
+    return {"ok": ok, "messages": messages}
 
 
 def criterion_grade(record: dict, criterion: dict) -> float:
@@ -637,7 +712,8 @@ def needs_review(record: dict) -> bool:
         return True
     return any(failure.get("timeout")
                for criterion in evaluation["criteria"]
-               for failure in criterion["failures"])
+               for test in criterion.get("tests", [])
+               for failure in test["failures"])
 
 
 # Reports (Portuguese, for students)
@@ -645,31 +721,27 @@ def _fraction(value: float | None, total: float) -> str:
     return f"{grade_text(value)} / {grade_text(total)}"
 
 
-def _failure_lines(failure: dict) -> list[str]:
-    lines = []
-    if failure.get("message"):
-        lines.append("- " + failure["message"])
+def _output_lines(title: str, text: str) -> list[str]:
+    lines = [f"    {title}:", "    ```"]
+    lines += [f"    {line}" for line in text.splitlines()]
+    return lines + ["    ```"]
+
+
+def _test_lines(number: int, test: dict) -> list[str]:
+    if test["ok"]:
+        status = "passou"
+    elif test["ran"]:
+        status = "falhou"
+    else:
+        status = "não executado"
+    lines = [f"- [{status}] Teste {number}: {test['label']}"]
+    for failure in test["failures"]:
+        lines.append(f"  - {failure['message']}")
         if "expected_output" in failure:
-            lines += ["", "  Esperado:", "", "```",
-                      *failure["expected_output"].splitlines(), "```", "",
-                      "  Obtido:", "", "```",
-                      *failure["actual_output"].splitlines(), "```", ""]
-    if failure.get("hint"):
-        indent = "  " if failure.get("message") else ""
-        lines.append(f"{indent}Sugestão: {failure['hint']}")
-    return lines
-
-
-def _test_lines(criterion: dict) -> list[str]:
-    lines = []
-    for number, test in enumerate(criterion.get("results", []), 1):
-        if test["ok"]:
-            status = "passou"
-        elif test["ran"]:
-            status = "falhou"
-        else:
-            status = "não executado"
-        lines.append(f"- [{status}] Teste {number}: {test['label']}")
+            lines += _output_lines("Esperado", failure["expected_output"])
+            lines += _output_lines("Obtido", failure["actual_output"])
+    if test.get("hint"):
+        lines.append(f"  - Sugestão: {test['hint']}")
     return lines
 
 
@@ -716,11 +788,10 @@ def report_md(ex: dict, record: dict) -> str:
         lines += [f"### {criterion['name']} · {grade}", ""]
         lines += [f"Testes certos: {criterion['passed']}/"
                   f"{criterion['total']}.", ""]
-        lines += _test_lines(criterion)
-        if criterion["failures"]:
-            lines += ["", "Detalhe das falhas:", ""]
-            for failure in criterion["failures"]:
-                lines += _failure_lines(failure)
+        for number, test in enumerate(criterion.get("tests", []), 1):
+            lines += _test_lines(number, test)
+        if criterion.get("hint"):
+            lines += ["", f"Sugestão: {criterion['hint']}"]
         comments = record.get("comments", {})
         comment = (comments.get(criterion["name"]) or "").strip()
         if comment:
@@ -733,9 +804,8 @@ def report_md(ex: dict, record: dict) -> str:
     lines += [
         "---",
         "",
-        "Avaliação gerada automaticamente com testes ao código entregue, "
-        "comparando-o com a resolução de referência. A nota de cada "
-        "critério é proporcional aos testes certos.",
+        "Avaliação gerada automaticamente com testes ao código entregue. "
+        "A nota de cada critério é proporcional aos testes certos.",
     ]
     return "\n".join(lines)
 
@@ -744,7 +814,8 @@ def report_text(ex: dict, record: dict) -> str:
     """Plain-text version of the report, to paste into Moodle."""
     text = report_md(ex, record)
     text = re.sub(r"^#+\s*", "", text, flags=re.M)
-    text = text.replace("**", "").replace("```", "")
+    text = re.sub(r"^[ \t]*```[ \t]*\n", "", text, flags=re.M)
+    text = text.replace("**", "")
     text = re.sub(r"^\|---.*\n", "", text, flags=re.M)
     text = re.sub(r"^\| (.*) \|$",
                   lambda match: match.group(1).replace(" | ", "  "),
@@ -775,7 +846,10 @@ def _grades_csv(state: dict, ids: list[str]) -> str:
 def export_reports(
     ex_id: str, ids: list[str], formats: list[str]
 ) -> tuple[bytes, str, int]:
-    """Write reports to data/<exercise>/reports and return them as a zip."""
+    """
+    Write reports (md, pdf and/or txt) to data/<exercise>/reports and
+    return them as a zip, with the folder and the number of students.
+    """
     ex = load_exercise(ex_id)
     state = load_state(ex_id)
     out_dir = os.path.join(data_dir(ex_id), "reports")
@@ -792,6 +866,8 @@ def export_reports(
             outputs[name + ".md"] = md.encode("utf-8")
         if "pdf" in formats:
             outputs[name + ".pdf"] = simple_pdf.markdown_to_pdf(md)
+        if "txt" in formats:
+            outputs[name + ".txt"] = report_text(ex, record).encode("utf-8")
         exported.append(student_id)
     csv_name = ex_id + "_notas.csv"
     outputs[csv_name] = _grades_csv(state, exported).encode("utf-8-sig")

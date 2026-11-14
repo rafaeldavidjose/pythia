@@ -1,5 +1,5 @@
 @echo off
 cd /d "%~dp0"
-python grader.py
-if errorlevel 1 py grader.py
+python pythia.py
+if errorlevel 1 py pythia.py
 pause

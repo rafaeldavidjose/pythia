@@ -4,77 +4,93 @@
   "ai_trap": ["nota_secreta"],
   "criteria": [
     {
-      "name": "media",
+      "criterion": "media",
       "points": 4,
       "description": "Devolve a média das notas, ou 0 se a lista é vazia.",
       "tests": [
-        {"check": "call", "function": "media", "args": [[10, 12, 14]]},
-        {"check": "call", "function": "media", "args": [[15]]},
-        {"check": "call", "function": "media", "args": [[]],
+        {"name": "returns",
+         "params": {"function": "media", "args": [[10, 12, 14]]}},
+        {"name": "returns",
+         "params": {"function": "media", "args": [[15]], "expected": 15}},
+        {"name": "returns",
+         "params": {"function": "media", "args": [[]]},
          "hint": "Uma lista vazia tem média 0."}
       ]
     },
     {
-      "name": "classificar",
+      "criterion": "classificar",
       "points": 4,
       "description": "Aprovado, Reprovado ou Inválida.",
       "tests": [
-        {"check": "call", "function": "classificar", "args": [15]},
-        {"check": "call", "function": "classificar", "args": [10],
+        {"name": "returns",
+         "params": {"function": "classificar", "args": [15]}},
+        {"name": "returns",
+         "params": {"function": "classificar", "args": [10]},
          "hint": "10 já é aprovado (>= 10)."},
-        {"check": "call", "function": "classificar", "args": [9.5]},
-        {"check": "call", "function": "classificar", "args": [-1],
+        {"name": "returns",
+         "params": {"function": "classificar", "args": [9.5]}},
+        {"name": "returns",
+         "params": {"function": "classificar", "args": [-1]},
          "hint": "Fora de [0, 20] é inválida."},
-        {"check": "call", "function": "classificar", "args": [21],
+        {"name": "returns",
+         "params": {"function": "classificar", "args": [21]},
          "hint": "Fora de [0, 20] é inválida."}
       ]
     },
     {
-      "name": "contar_aprovados",
+      "criterion": "contar_aprovados",
       "points": 3,
       "description": "Conta as notas >= 10.",
       "tests": [
-        {"check": "call", "function": "contar_aprovados",
-         "args": [[8, 10, 12, 19]]},
-        {"check": "call", "function": "contar_aprovados", "args": [[]]},
-        {"check": "call", "function": "contar_aprovados",
-         "args": [[9.9, 3]]}
+        {"name": "defines", "weight": 0.5,
+         "params": {"function": "contar_aprovados"}},
+        {"name": "returns",
+         "params": {"function": "contar_aprovados",
+                    "args": [[8, 10, 12, 19]]}},
+        {"name": "returns",
+         "params": {"function": "contar_aprovados", "args": [[]]}},
+        {"name": "returns",
+         "params": {"function": "contar_aprovados", "args": [[9.9, 3]]}}
       ]
     },
     {
-      "name": "subir_notas",
+      "criterion": "subir_notas",
       "points": 3,
       "description": "Soma o bónus a cada nota, com máximo de 20.",
       "tests": [
-        {"check": "call", "function": "subir_notas", "args": [[10, 12], 2],
-         "check_return": false, "mutates": [0],
+        {"name": "mutates",
+         "params": {"function": "subir_notas", "args": [[10, 12], 2]},
          "hint": "A função altera a lista recebida, não cria outra."},
-        {"check": "call", "function": "subir_notas", "args": [[18, 20], 5],
-         "check_return": false, "mutates": [0],
+        {"name": "mutates",
+         "params": {"function": "subir_notas", "args": [[18, 20], 5],
+                    "expected": [20, 20]},
          "hint": "Nenhuma nota passa de 20."}
       ]
     },
     {
-      "name": "mostrar_resultado",
+      "criterion": "mostrar_resultado",
       "points": 2,
       "description": "Imprime o nome, a nota e a classificação.",
       "tests": [
-        {"check": "call", "function": "mostrar_resultado",
-         "args": ["Ana", 15], "check_return": false, "output": "equal"},
-        {"check": "call", "function": "mostrar_resultado",
-         "args": ["Rui", 8], "check_return": false, "output": "equal"}
+        {"name": "prints",
+         "params": {"function": "mostrar_resultado", "args": ["Ana", 15]}},
+        {"name": "prints",
+         "params": {"function": "mostrar_resultado", "args": ["Rui", 8],
+                    "expected": "Rui: 8 (Reprovado)"}}
       ]
     },
     {
-      "name": "Programa",
+      "criterion": "Programa",
       "points": 4,
       "description": "Lê notas até 'fim' e mostra a média e os aprovados.",
       "tests": [
-        {"check": "program", "inputs": ["12", "8", "fim"],
-         "contains": ["Média: 10.0", "Aprovados: 1"],
+        {"name": "program",
+         "params": {"inputs": ["12", "8", "fim"],
+                    "contains": ["Média: 10.0", "Aprovados: 1"]},
          "label": "programa: notas 12 e 8"},
-        {"check": "program", "inputs": ["fim"],
-         "contains": ["Média: 0.0", "Aprovados: 0"],
+        {"name": "program",
+         "params": {"inputs": ["fim"],
+                    "contains": ["Média: 0.0", "Aprovados: 0"]},
          "label": "programa: sem notas"}
       ]
     }

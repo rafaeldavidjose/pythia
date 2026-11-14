@@ -1,36 +1,48 @@
+[![Tests](https://github.com/rafaeldavidjose/pythia/actions/workflows/tests.yml/badge.svg)](https://github.com/rafaeldavidjose/pythia/actions/workflows/tests.yml)
+
 # Pythia
 
-Local web app to grade Python submissions with tests. It runs each student's file, compares it with a reference solution and gives a grade and a report. I review and adjust everything in the browser before exporting. No language model is involved.
+Grades Python exercises with tests. Each student's file runs in its own process and goes through the tests in the exercise's `rules.json`. Every test passes or fails, and each criterion's grade follows the tests that pass. No language model is involved. I review and adjust everything in the browser before exporting.
 
 The interface and the code are in English. The reports students get are in Portuguese.
 
 You need Python 3.10 or newer. There is nothing to install.
 
-## Start
+## How to use
 
-- Windows: double-click `start.bat`
-- macOS: double-click `start.command`
-- Anywhere else: `python grader.py`
+- `python pythia.py` or `python pythia.py serve` opens the web interface at http://127.0.0.1:8765 (`--port`, `--no-browser`). On Windows you can double-click `start.bat`, on macOS `start.command`.
+- `python pythia.py checks` lists the checks a `rules.json` can use, with their params.
+- `python pythia.py validate EXERCISE` checks `rules.json` and grades `solution.py` with it. The solution has to pass every test.
+- `python pythia.py import EXERCISE FOLDER` imports a folder of submissions.
+- `python pythia.py assess EXERCISE` grades the submissions not graded yet. `--regrade` grades again everyone not finalized, `--ids` picks students.
+- `python pythia.py report EXERCISE` prints the grades. `--export md,pdf,txt` writes the reports and `_notas.csv` to `data/<exercise>/reports`.
 
-Copy `students.example.csv` to `students.csv` and put your roster in it (`number;name;class`). `students.csv` and `data/` are git-ignored.
+The web interface and the command line share the same `data/` folder, so you can import and grade in the terminal and review in the browser.
 
-The browser opens at http://127.0.0.1:8765. Keep the terminal open while you use it. Everything is saved in `data/`.
+Copy `students.example.csv` to `students.csv` and put your roster in it (`number;name;class`). `students.csv`, `data/` and `submissions/` are git-ignored.
 
 ## Try the example
 
-The repo comes with a small exercise, `Exercise_1`, and five fake submissions in `examples/entrega1`. Copy `students.example.csv` to `students.csv`, start the app, pick `Exercise_1`, type `examples/entrega1` in the folder field and click **Import folder**, then **Grade new**.
+The repo comes with an exercise, `Exercise_1`, and five fake submissions in `examples/entrega1`. Copy `students.example.csv` to `students.csv` and run:
 
-You get one of each case: a copy of the solution (20), a valid alternative implementation (20), a file with typical mistakes, a syntax error and an infinite loop. Delete `exercises/Exercise_1` and `examples/` when you start with your own.
+```text
+python pythia.py validate Exercise_1
+python pythia.py import Exercise_1 examples/entrega1
+python pythia.py assess Exercise_1
+python pythia.py report Exercise_1
+```
 
-## Grading
+You get one of each case: a copy of the solution (20), a valid alternative implementation (20), a file with typical mistakes (9,25), a syntax error (0) and an infinite loop (16,25). The last three are marked for review. Delete `exercises/Exercise_1` and `examples/` when you start with your own.
+
+## Grading in the browser
 
 1. Download the submissions from Moodle and unzip them into `submissions/entregaN`.
 2. Pick the exercise. The folder field suggests `entregaN` from the number at the end of the exercise name (`Exercise_1` gives `entrega1`). Click **Import folder**. **Choose folders**, **Import zip** and drag and drop also work.
 3. Click **Grade new**.
-4. Open each student. You see every test of each criterion, numbered, with passed or failed, and the details of the failures. You can change the grade and add a comment, which goes in the report.
+4. Open each student. Every criterion lists its tests, numbered, with passed, failed or not run, and under each failed test what went wrong. You can change the grade and add a comment, which goes in the report.
 5. Click **Save** and tick **Finalized** when you are done with that student.
 6. **Copy report for Moodle** copies the plain-text report.
-7. **Export reports** writes a `.md` and/or `.pdf` per student (each report lists every test with passou, falhou or não executado) and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
+7. **Export reports** writes a `.md` and/or `.pdf` per student and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
 
 Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. The full name is matched against the roster by first and last name, ignoring "de", "da", "dos" and so on. The number in the file name does not matter. If it belongs to someone else, the student page shows a warning. "unknown" means no match, so fix the name or number on that page.
 
@@ -38,105 +50,131 @@ Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. Th
 
 **Regrade** reruns the tests for everyone who is not finalized and resets their grades and comments. Finalized students are never touched.
 
-## Adding an exercise
+## Rules
 
-An exercise is a folder in `exercises/` with a rules file and, usually, the reference solution:
+An exercise is a folder in `exercises/` with `rules.json` and, usually, `solution.py`. Create it in the **Exercises** tab or copy the folder in. **Check rules** in that tab does the same as `validate`.
 
-- `rules.json` lists what to test and how much each criterion is worth.
-- `solution.py` is the reference solution. A test without an `expected` value is compared with what the solution returns. It is optional when every test has an `expected`.
-
-Create it in the **Exercises** tab or copy the folder into `exercises/`. Saving with an existing name replaces the files. `exercises/Exercise_1` is a complete example to copy from.
+Like an egrader rules file, every test names a check, gives it a weight and passes it params:
 
 ```json
 {
-  "title": "Mini-projeto de avaliação",
-  "load_inputs": ["sair"],
-  "ai_trap": ["palavra_rara"],
+  "title": "Gestão de notas",
+  "load_inputs": ["fim"],
   "criteria": [
     {
-      "name": "soma",
-      "points": 3,
-      "description": "Devolve a soma de dois números.",
+      "criterion": "media",
+      "points": 4,
+      "description": "Devolve a média das notas, ou 0 se a lista é vazia.",
       "tests": [
-        {"check": "call", "function": "soma", "args": [2, 3]},
-        {"check": "call", "function": "soma", "args": [-1, 1],
-         "expected": 0, "hint": "Os números podem ser negativos."}
+        {"name": "returns",
+         "params": {"function": "media", "args": [[10, 12, 14]]}},
+        {"name": "returns", "weight": 2,
+         "params": {"function": "media", "args": [[]], "expected": 0},
+         "hint": "Uma lista vazia tem média 0."}
       ]
     },
     {
-      "name": "Ciclo do programa",
+      "criterion": "Programa",
       "points": 4,
       "tests": [
-        {"check": "program", "inputs": ["2", "3", "sair"],
-         "contains": ["5"], "label": "programa: somar e sair"}
+        {"name": "program",
+         "params": {"inputs": ["12", "8", "fim"], "contains": ["Média: 10.0"]},
+         "label": "programa: notas 12 e 8"}
       ]
     }
   ]
 }
 ```
 
-Top level:
+| Key | Where | Meaning |
+|---|---|---|
+| `title` | top | Name shown in the report. |
+| `load_inputs` | top | Answers given to `input()` when the file is loaded to collect its functions. |
+| `ai_trap` | top | Optional words from a hidden instruction in the assignment, see below. |
+| `criteria` | top | List of criteria. The points should add up to the maximum grade. |
+| `criterion` | criterion | Name of the criterion. |
+| `points` | criterion | What the criterion is worth. |
+| `description` | criterion | What was asked, shown in the Exercises tab. |
+| `hint` | criterion | Shown when a test fails and no test hint was shown. |
+| `review` | criterion | `true` flags the criterion for manual checking. A criterion with no tests is graded by hand. |
+| `tests` | criterion | List of tests. |
+| `name` | test | The check to run. |
+| `weight` | test | How much the test counts inside its criterion. 1 by default. |
+| `params` | test | The check's params. |
+| `hint` | test | Shown under the test when it fails. The same hint is shown once per criterion. |
+| `label` | test | Text for the test in the report. By default it is the call, like `media([10, 12, 14])`. |
 
-| Key | Meaning |
-|---|---|
-| `title` | Name shown in the report. |
-| `load_inputs` | Answers given to `input()` when the file is loaded to collect its functions. |
-| `ai_trap` | Optional words from a hidden instruction in the assignment, see below. |
-| `criteria` | List of criteria. The points should add up to the maximum grade. |
-
-Each criterion has `name`, `points` and `tests`, plus the optional `description`, `hint` (used when a test fails and has no hint of its own) and `review` (true flags it for manual checking).
-
-A test has a `check` and its parameters. Every test also takes `weight` (default 1), `hint` and `label` (the text shown in the report, which has a default).
-
-`"check": "call"` calls the student's function and the solution's with the same arguments:
-
-| Parameter | Meaning |
-|---|---|
-| `function` | Name of the function. Required. |
-| `args` | List of arguments. |
-| `expected` | Value the function must return. Without it, the return value is compared with the solution's. |
-| `check_return` | `false` to ignore the return value. |
-| `output` | `"equal"` compares what is printed with the solution's output. |
-| `output_contains` | Phrases that must appear in what is printed. |
-| `output_excludes` | Phrases that must not appear. |
-| `mutates` | Argument positions (`[0]`) that must end up equal to the solution's after the call. |
-| `inputs` | Answers given to `input()` during the call. |
-| `names` | Names for list arguments in the report, like `{"0": "mapa"}`. |
-
-`"check": "program"` runs the whole file with fixed answers to `input()`:
-
-| Parameter | Meaning |
-|---|---|
-| `inputs` | Answers given to `input()`, in order. Required. |
-| `contains` | Phrases that must appear in the output. |
-| `excludes` | Phrases that must not appear. |
-| `must_finish` | `true` by default. The program cannot ask for more input than given. |
-
-JSON has no tuples, so a tuple argument is written as a list. Tuples and lists count as equal when comparing, and phrases ignore case, accents and extra spaces, so a valid alternative solution is not penalised. A criterion's grade is the share of passing tests (by weight), rounded to 0.25.
+A criterion's grade is its points times the weight of the passing tests over the total weight, rounded to 0.25.
 
 `hint`, `label` and `description` are shown to students, so write them in Portuguese.
 
-A wrong file is reported in the Exercises tab with the criterion and test that has the problem, for example an unknown key or a missing `expected`.
+A mistake in `rules.json` is reported with its place, for example `criterion 2 (media), test 3: check 'returns' has no param 'arg'`.
+
+## Checks
+
+| Check | What it does | Params |
+|---|---|---|
+| `returns` | Calls a function and compares the value it returns. | `function`, `args`, `expected`, `inputs`, `names` |
+| `prints` | Calls a function and checks what it prints. | `function`, `args`, `expected`, `contains`, `excludes`, `inputs`, `names` |
+| `mutates` | Calls a function and compares one of its arguments after the call. | `function`, `args`, `position`, `expected`, `inputs`, `names` |
+| `program` | Runs the whole file with answers to `input()` and checks the output. | `inputs`, `contains`, `excludes`, `must_finish` |
+| `defines` | Checks that the file defines a function with this name. | `function` |
+
+| Param | Meaning |
+|---|---|
+| `function` | Name of the function. Required where it appears. |
+| `args` | List of arguments. JSON has no tuples, so write one as `{"$tuple": [0, 0]}`. |
+| `expected` | The right answer. Without it, the check runs `solution.py` with the same arguments and uses its answer. For `prints` it is the whole output. |
+| `inputs` | Answers given to `input()`, in order. |
+| `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. |
+| `contains` | Phrases that must appear in the output. With only `contains` or `excludes`, `prints` does not compare the whole output. |
+| `excludes` | Phrases that must not appear. |
+| `position` | Which argument `mutates` compares, counting from 0. |
+| `must_finish` | `program` only. The file cannot ask for more input than given. `true` by default. |
+
+Tuples and lists count as equal, numbers are compared to 6 decimal places, and output ignores case, accents and extra spaces, so a valid alternative solution is not penalised. `exit()` at the end of a program is fine.
+
+Without `solution.py` every `returns` and `mutates` test needs an `expected`, and so does `prints` unless it only looks for phrases.
+
+### Adding a check
+
+Checks work like egrader plugins. Each one is a function in `checks.py` named `check_<name>`:
+
+```python
+def check_returns(student, solution, function, args=(), expected=NOT_GIVEN,
+                  inputs=(), names=None):
+    """Call a function and compare the value it returns."""
+```
+
+It gets the student's and the solution's file already loaded, plus the params as keyword arguments, and returns the problems it found, in Portuguese. An empty list means the test passed. The first line of the docstring is what `python pythia.py checks` shows, and the params are checked against the function's signature, so a new check needs no other change. Add it to the table above too; a test makes sure every check and param is documented here.
+
+## Reports
+
+Each criterion lists every test with its result, and what went wrong under the ones that failed:
+
+```text
+### classificar · 1,5 / 4
+
+Testes certos: 2/5.
+
+- [passou] Teste 1: classificar(15)
+- [falhou] Teste 2: classificar(10)
+  - esperado 'Aprovado', obtido 'Reprovado'
+  - Sugestão: 10 já é aprovado (>= 10).
+- [passou] Teste 3: classificar(9.5)
+```
+
+A test that never ran, for example after a syntax error, shows as `[não executado]`.
 
 `ai_trap` lists words from a hidden instruction in the assignment. If the code contains one, the list shows "possible AI" and the student page shows the lines. It never changes the grade or the report.
 
-### When JSON is not enough
+## Tests
 
-An exercise can use a `criteria.py` instead of `rules.json`, written with the helpers in `checks.py` (`criterion`, `call`, `program`, `named`). It takes the same parameters as keyword arguments and lets you share values or build tests in a loop. It needs a `solution.py`. If both files exist, `rules.json` wins.
-
-```python
-from checks import call, criterion
-
-TITLE = "Mini-projeto de avaliação"
-LOAD_INPUTS = ["sair"]
-
-CRITERIA = [
-    criterion("soma", 3, [
-        call("soma", 2, 3),
-        call("soma", -1, 1, expected=0),
-    ]),
-]
+```text
+python -m unittest
 ```
+
+The tests use only the standard library. They cover every check, the rules file, importing, grading in a separate process (syntax errors, infinite loops, crashes), the reports and the PDF, the command line and the web API, and the example above. They also check the repo itself: no line of Python over 80 characters, no long dash anywhere, and every check, param and command documented in this README. GitHub Actions runs them on Windows and Ubuntu with Python 3.10 and 3.13.
 
 ## Safety
 

@@ -160,7 +160,7 @@ def markdown_to_pdf(md: str) -> bytes:
             in_code = not in_code
             continue
         if in_code:
-            doc.line(raw, size=9, font="F3", indent=20, mono=True,
+            doc.line(raw.rstrip(), size=9, font="F3", indent=20, mono=True,
                      spacing=1.3)
             continue
         if raw.startswith("|"):
@@ -188,7 +188,12 @@ def markdown_to_pdf(md: str) -> bytes:
         elif text.startswith("- "):
             doc.line("-  " + text[2:], indent=8)
         elif raw.startswith("  ") and text.strip():
-            doc.line(text.strip(), indent=20, size=9.5)
+            # Nested lines: two spaces of Markdown indent per level
+            depth = (len(raw) - len(raw.lstrip(" "))) // 2
+            content = text.strip()
+            if content.startswith("- "):
+                content = "-  " + content[2:]
+            doc.line(content, indent=8 + 12 * depth, size=9.5)
         elif not text.strip():
             doc.space(5)
         else:
