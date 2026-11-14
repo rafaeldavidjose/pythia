@@ -153,21 +153,32 @@ It gets the student's and the solution's file already loaded, plus the params as
 
 ## Reports
 
-Each criterion lists every test with its result, and what went wrong under the ones that failed:
+Reports are laid out like the output of a tool, with fields, tables and no prose. The header lists the exercise, the student, the file, the date, the grade and the tests passed, followed by a table of criteria. Each criterion then has a table with every test and its result, and the failures by test number:
 
 ```text
-### classificar · 1,5 / 4
+## classificar
 
-Testes certos: 2/5.
+- Nota: 1,5 / 4
+- Testes OK: 2 / 5
 
-- [passou] Teste 1: classificar(15)
-- [falhou] Teste 2: classificar(10)
-  - esperado 'Aprovado', obtido 'Reprovado'
+| N.º | Teste | Peso | Resultado |
+|---|---|---|---|
+| 1 | classificar(15) | 1 | OK |
+| 2 | classificar(10) | 1 | FALHOU |
+| 3 | classificar(9.5) | 1 | OK |
+| 4 | classificar(-1) | 1 | FALHOU |
+| 5 | classificar(21) | 1 | FALHOU |
+
+Falhas:
+
+- Teste 2: esperado 'Aprovado', obtido 'Reprovado'
   - Sugestão: 10 já é aprovado (>= 10).
-- [passou] Teste 3: classificar(9.5)
+- Teste 4: esperado 'Inválida', obtido 'Reprovado'
+  - Sugestão: Fora de [0, 20] é inválida.
+- Teste 5: esperado 'Inválida', obtido 'Aprovado'
 ```
 
-A test that never ran, for example after a syntax error, shows as `[não executado]`.
+A test that never ran, for example after a syntax error, shows as `NÃO CORREU`. The plain-text version for Moodle has the same content, with the tables as aligned columns.
 
 `ai_trap` lists words from a hidden instruction in the assignment. If the code contains one, the list shows "possible AI" and the student page shows the lines. It never changes the grade or the report.
 
