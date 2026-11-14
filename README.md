@@ -1,5 +1,3 @@
-[![Tests](https://github.com/rafaeldavidjose/pythia/actions/workflows/tests.yml/badge.svg)](https://github.com/rafaeldavidjose/pythia/actions/workflows/tests.yml)
-
 # Pythia
 
 Grades Python exercises with tests. Each student's file runs in its own process and goes through the tests in the exercise's `rules.json`. Every test passes or fails, and each criterion's grade follows the tests that pass. No language model is involved. I review and adjust everything in the browser before exporting.
@@ -179,7 +177,7 @@ A test that never ran, for example after a syntax error, shows as `[não executa
 python -m unittest
 ```
 
-The tests use only the standard library. They cover every check, the rules file, importing, grading in a separate process (syntax errors, infinite loops, crashes), the reports and the PDF, the command line and the web API, and the example above. They also check the repo itself: no line of Python over 80 characters, no long dash anywhere, and every check, param and command documented in this README. GitHub Actions runs them on Windows and Ubuntu with Python 3.10 and 3.13.
+The tests use only the standard library. They cover every check, the rules file, importing, grading in a separate process (syntax errors, infinite loops, crashes), the reports and the PDF, the command line and the web API, and the example above. They also check the repo itself: no line of Python over 80 characters, no long dash anywhere, and every check, param and command documented in this README.
 
 ## Safety
 
