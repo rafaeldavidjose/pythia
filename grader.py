@@ -1,0 +1,257 @@
+"""
+Pythia: local web app to grade student submissions with automatic tests.
+Start with:  python grader.py   (opens http://127.0.0.1:8765 in the browser)
+"""
+
+import base64
+import json
+import os
+import threading
+import traceback
+import urllib.parse
+import webbrowser
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+import engine
+
+PORT = 8765
+PAGE = os.path.join(engine.BASE, "web", "index.html")
+
+_jobs: dict[str, dict] = {}  # progress of running evaluations, per exercise
+_lock = threading.Lock()
+
+
+def evaluate_in_background(ex_id: str, ids: list[str]) -> None:
+    progress = _jobs[ex_id]
+    try:
+        ex = engine.load_exercise(ex_id)
+    except Exception as error:
+        progress.update(running=False, error=f"Error in criteria.py: {error}")
+        return
+
+    def evaluate_one(student_id: str) -> None:
+        record = engine.load_state(ex_id)["students"][student_id]
+        evaluation = engine.evaluate_student(ex, record)
+        with _lock:
+            state = engine.load_state(ex_id)
+            engine.apply_evaluation(state["students"][student_id], evaluation)
+            engine.save_state(ex_id, state)
+            progress["done"] += 1
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(evaluate_one, i) for i in ids]
+        for future in futures:
+            try:
+                future.result()
+            except Exception:
+                traceback.print_exc()
+                progress["failed"] += 1
+    progress["running"] = False
+
+
+def start_evaluation(ex_id: str, ids: list[str] | None,
+                     regrade: bool) -> dict:
+    if _jobs.get(ex_id, {}).get("running"):
+        raise ValueError("An evaluation is already running for this exercise.")
+    students = engine.load_state(ex_id)["students"]
+    if not ids:
+        ids = [student_id for student_id, record in students.items()
+               if regrade or not record.get("evaluation")]
+    ids = [student_id for student_id in ids
+           if student_id in students
+           and not students[student_id].get("finalized")]
+    _jobs[ex_id] = {"running": True, "total": len(ids), "done": 0,
+                    "failed": 0, "error": None}
+    thread = threading.Thread(target=evaluate_in_background,
+                              args=(ex_id, ids), daemon=True)
+    thread.start()
+    return _jobs[ex_id]
+
+
+def summary(record: dict) -> dict:
+    evaluation = record.get("evaluation")
+    return {
+        "id": record["id"],
+        "number": record["number"],
+        "name": record["name"],
+        "class": record.get("class", ""),
+        "recognized": record.get("recognized", False),
+        "warning": record.get("warning", ""),
+        "source": record.get("source", ""),
+        "file": record.get("file"),
+        "files": record.get("files", []),
+        "grade": engine.final_grade(record),
+        "finalized": record.get("finalized", False),
+        "evaluated": bool(evaluation),
+        "ai_trap": bool(evaluation and evaluation.get("ai_trap")),
+        "needs_review": engine.needs_review(record),
+    }
+
+
+def student_details(ex_id: str, student_id: str) -> dict:
+    record = engine.load_state(ex_id)["students"][student_id]
+    code = ""
+    if record.get("file"):
+        path = os.path.join(engine.DATA_DIR, ex_id, "submissions",
+                            record["id"], record["file"])
+        if os.path.exists(path):
+            code = engine.read_text(path)
+    return {
+        "summary": summary(record),
+        "evaluation": record.get("evaluation"),
+        "grades": record.get("grades", {}),
+        "comments": record.get("comments", {}),
+        "notes": record.get("notes", ""),
+        "code": code,
+    }
+
+
+def save_student(changes: dict) -> dict:
+    with _lock:
+        state = engine.load_state(changes["ex"])
+        record = state["students"][changes["id"]]
+        record.setdefault("grades", {}).update(
+            {name: float(value)
+             for name, value in changes.get("grades", {}).items()})
+        record.setdefault("comments", {}).update(changes.get("comments", {}))
+        for key in ("notes", "finalized"):
+            if key in changes:
+                record[key] = changes[key]
+        for key in ("name", "number", "class"):
+            if key in changes:
+                record[key] = changes[key].strip()
+        if changes.get("file") in record.get("files", []):
+            record["file"] = changes["file"]
+        engine.save_state(changes["ex"], state)
+    return summary(record)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args: Any) -> None:
+        pass
+
+    def send(self, data: Any, status: int = 200,
+             content_type: str = "application/json",
+             headers: dict | None = None) -> None:
+        if content_type == "application/json":
+            data = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        if content_type.startswith(("application/json", "text")):
+            content_type += "; charset=utf-8"
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def body(self) -> dict:
+        length = int(self.headers.get("Content-Length") or 0)
+        if not length:
+            return {}
+        return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def do_GET(self) -> None:
+        url = urllib.parse.urlparse(self.path)
+        query = dict(urllib.parse.parse_qsl(url.query))
+        try:
+            self.handle_get(url.path, query)
+        except Exception as error:
+            traceback.print_exc()
+            self.send({"error": f"{type(error).__name__}: {error}"}, 500)
+
+    def do_POST(self) -> None:
+        try:
+            self.handle_post(self.path, self.body())
+        except ValueError as error:
+            self.send({"error": str(error)}, 400)
+        except Exception as error:
+            traceback.print_exc()
+            self.send({"error": f"{type(error).__name__}: {error}"}, 500)
+
+    def handle_get(self, path: str, query: dict) -> None:
+        if path == "/":
+            with open(PAGE, "rb") as f:
+                self.send(f.read(), content_type="text/html")
+        elif path == "/api/exercises":
+            self.send(engine.list_exercises())
+        elif path == "/api/exercise_file":
+            which = "solution" if query["which"] == "solution" else "criteria"
+            file = os.path.join(engine.EXERCISES_DIR, engine.slug(query["ex"]),
+                                which + ".py")
+            text = engine.read_text(file) if os.path.exists(file) else ""
+            self.send({"text": text})
+        elif path == "/api/students":
+            records = engine.load_state(query["ex"])["students"].values()
+            rows = sorted(
+                (summary(record) for record in records),
+                key=lambda s: (s["class"],
+                               engine.strip_accents(s["name"]).lower()))
+            self.send({"students": rows, "progress": _jobs.get(query["ex"])})
+        elif path == "/api/student":
+            self.send(student_details(query["ex"], query["id"]))
+        elif path == "/api/report":
+            ex = engine.load_exercise(query["ex"])
+            record = engine.load_state(query["ex"])["students"][query["id"]]
+            self.send({"md": engine.report_md(ex, record),
+                       "text": engine.report_text(ex, record)})
+        elif path == "/api/export":
+            self.export(query)
+        else:
+            self.send({"error": "not found"}, 404)
+
+    def export(self, query: dict) -> None:
+        ex_id = query["ex"]
+        if query.get("ids"):
+            ids = query["ids"].split(",")
+        else:
+            ids = list(engine.load_state(ex_id)["students"])
+        formats = query.get("formats", "md,pdf").split(",")
+        data, folder, count = engine.export_reports(ex_id, ids, formats)
+        headers = {
+            "Content-Disposition":
+                f'attachment; filename="{ex_id}_reports.zip"',
+            "X-Folder": urllib.parse.quote(folder),
+            "X-Count": str(count),
+        }
+        self.send(data, content_type="application/zip", headers=headers)
+
+    def handle_post(self, path: str, body: dict) -> None:
+        if path == "/api/exercises":
+            ex_id = engine.save_exercise(body["id"], body.get("solution"),
+                                         body.get("criteria"))
+            exercises = engine.list_exercises()
+            self.send(next(e for e in exercises if e["id"] == ex_id))
+        elif path == "/api/import_folder":
+            files = engine.read_folder(body["folder"])
+            self.send(engine.import_submissions(body["ex"], files))
+        elif path == "/api/import_files":
+            files = [(item["path"], base64.b64decode(item["data"]))
+                     for item in body["files"]]
+            self.send(engine.import_submissions(body["ex"], files))
+        elif path == "/api/evaluate":
+            self.send(start_evaluation(body["ex"], body.get("ids"),
+                                       body.get("all", False)))
+        elif path == "/api/save":
+            self.send(save_student(body))
+        else:
+            self.send({"error": "not found"}, 404)
+
+
+def main() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    url = f"http://127.0.0.1:{PORT}"
+    print(f"Pythia running at {url}")
+    print("Close this window or press Ctrl+C to stop.")
+    threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

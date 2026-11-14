@@ -1,0 +1,4 @@
+__pycache__/
+students.csv
+data/*
+!data/.keep
