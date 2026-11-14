@@ -35,6 +35,13 @@ def limpar(mapa):
     mapa[0][0] = "."
 
 
+def andar(mapa, passos):
+    print("A andar")
+    if mapa:
+        mapa[0][0] = "P"
+    return passos * 2
+
+
 nome = input("Nome: ")
 print(f"Bem-vindo, {nome}")
 """
@@ -202,6 +209,48 @@ class MutatesTest(CheckTestCase):
                        args=[[1], 1], position=2)
 
 
+class CallTest(CheckTestCase):
+    def test_passes_when_everything_matches(self) -> None:
+        self.assertEqual(self.check("call", SOLUTION, function="andar",
+                                    args=[[["."]], 3], same_output=True,
+                                    mutates=[0]), [])
+
+    def test_lists_every_problem_in_one_test(self) -> None:
+        source = ("def andar(mapa, passos):\n"
+                  "    print('Parado')\n"
+                  "    return passos\n")
+        self.assertEqual(
+            self.messages("call", source, function="andar",
+                          args=[[["."]], 3], same_output=True,
+                          contains=["a andar"], mutates=[0],
+                          names={"0": "mapa"}),
+            ["esperado 6, obtido 3", "saída diferente da esperada",
+             'a saída não contém "a andar"',
+             "depois da chamada, mapa[0][0] = '.', esperado 'P'"])
+
+    def test_one_wrong_part_fails_the_test(self) -> None:
+        source = ("def andar(mapa, passos):\n"
+                  "    print('A andar')\n"
+                  "    return passos * 2\n")
+        self.assertEqual(self.messages("call", source, function="andar",
+                                       args=[[["."]], 3], mutates=[0]),
+                         ["depois da chamada, argumento 1[0][0] = '.', "
+                          "esperado 'P'"])
+
+    def test_return_value_can_be_ignored_or_given(self) -> None:
+        source = "def andar(mapa, passos):\n    return 0\n"
+        self.assertEqual(self.check("call", source, function="andar",
+                                    args=[[], 1], check_return=False), [])
+        self.assertEqual(self.check("call", source, function="andar",
+                                    args=[[], 1], expected=0), [])
+
+    def test_solution_is_only_used_when_needed(self) -> None:
+        source = "def extra():\n    print('olá')\n"
+        self.assertEqual(self.check("call", source, function="extra",
+                                    check_return=False, contains=["ola"]),
+                         [])
+
+
 class ProgramTest(CheckTestCase):
     def test_finds_the_phrases(self) -> None:
         self.assertEqual(self.check("program", SOLUTION, inputs=["Rui"],
@@ -293,7 +342,7 @@ class ComparisonTest(unittest.TestCase):
 class CheckInfoTest(unittest.TestCase):
     def test_available_checks(self) -> None:
         self.assertEqual(list(checks.available()),
-                         ["returns", "prints", "mutates", "program",
+                         ["returns", "prints", "mutates", "call", "program",
                           "defines"])
 
     def test_every_check_has_a_summary(self) -> None:
@@ -320,6 +369,14 @@ class CheckInfoTest(unittest.TestCase):
         self.assertTrue(checks.needs_solution("prints", {}))
         self.assertFalse(checks.needs_solution("prints", {"contains": ["a"]}))
         self.assertFalse(checks.needs_solution("program", {}))
+        self.assertTrue(checks.needs_solution("call", {}))
+        self.assertFalse(checks.needs_solution("call", {"expected": 1}))
+        self.assertTrue(checks.needs_solution(
+            "call", {"expected": 1, "mutates": [0]}))
+        self.assertTrue(checks.needs_solution(
+            "call", {"check_return": False, "same_output": True}))
+        self.assertFalse(checks.needs_solution(
+            "call", {"check_return": False, "contains": ["x"]}))
         self.assertFalse(checks.needs_solution("defines", {}))
 
     def test_default_labels(self) -> None:
@@ -332,7 +389,12 @@ class CheckInfoTest(unittest.TestCase):
                          "f([...])")
         self.assertEqual(label("mutates", {"function": "f", "args": [[1], 2],
                                            "names": {"0": "mapa"}}),
-                         "f(mapa, 2)")
+                         "f(mapa, 2): mapa depois da chamada")
+        self.assertEqual(label("mutates", {"function": "f", "args": [1, []],
+                                           "position": 1}),
+                         "f(1, []): argumento 2 depois da chamada")
+        self.assertEqual(label("prints", {"function": "f", "args": ["Ana"]}),
+                         "f('Ana'): saída")
         self.assertEqual(label("returns", {"function": "f",
                                            "args": [(1, 2)]}),
                          "f((1, 2))")

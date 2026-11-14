@@ -3,14 +3,18 @@ Reads exercises/<id>/rules.json. As in an egrader rules file, every test
 names a check and gives its params. The params are checked against the
 check's function in checks.py, so a typo is reported with its place in the
 file instead of failing silently while grading.
+
+A value used by many tests, like a map, can be written once under "values"
+and used as {"$value": "mapa"}. In the report it shows as mapa.
 """
 
+import copy
 import json
 from typing import Any
 
 import checks
 
-TOP_KEYS = {"title", "load_inputs", "ai_trap", "criteria"}
+TOP_KEYS = {"title", "load_inputs", "ai_trap", "values", "criteria"}
 CRITERION_KEYS = {
     "criterion", "points", "description", "hint", "review", "tests",
 }
@@ -19,6 +23,7 @@ TEST_KEYS = {"name", "params", "weight", "hint", "label"}
 PARAM_TYPES = {
     "function": str, "args": list, "inputs": list, "contains": list,
     "excludes": list, "names": dict, "position": int, "must_finish": bool,
+    "check_return": bool, "same_output": bool, "mutates": list,
 }
 TYPE_NAMES = {
     str: "a string", list: "a list", dict: "an object", int: "an integer",
@@ -66,22 +71,61 @@ def _check_params(name: str, params: dict, where: str) -> None:
     for key, parameter in accepted.items():
         if parameter.default is parameter.empty and key not in params:
             raise ValueError(f"{where}: check '{name}' needs param '{key}'")
-    position = params.get("position", 0)
-    if "args" in params and name == "mutates":
-        if not 0 <= position < len(params["args"]):
-            raise ValueError(f"{where}: 'position' {position} is not "
+    positions = []
+    if name == "mutates":
+        positions = [params.get("position", 0)]
+    elif name == "call":
+        positions = params.get("mutates", [])
+    for position in positions:
+        _check_type(position, int, "position", where)
+        if not 0 <= position < len(params.get("args", [])):
+            raise ValueError(f"{where}: position {position} is not "
                              f"one of the args")
 
 
-def _build_test(item: Any, where: str, has_solution: bool) -> dict:
+def _is_reference(value: Any) -> bool:
+    return isinstance(value, dict) and set(value) == {"$value"}
+
+
+def _resolve(value: Any, values: dict, where: str) -> Any:
+    """Replace each {"$value": name} with a copy of that shared value."""
+    if isinstance(value, list):
+        return [_resolve(item, values, where) for item in value]
+    if _is_reference(value):
+        if value["$value"] not in values:
+            raise ValueError(f"{where}: unknown value '{value['$value']}' "
+                             f"(values: {', '.join(values) or 'none'})")
+        return copy.deepcopy(values[value["$value"]])
+    if isinstance(value, dict):
+        return {key: _resolve(item, values, where)
+                for key, item in value.items()}
+    return value
+
+
+def _reference_names(params: dict) -> dict:
+    """An argument given as {"$value": "mapa"} is called mapa in reports."""
+    args = params.get("args")
+    if not isinstance(args, list):
+        return {}
+    return {str(position): arg["$value"]
+            for position, arg in enumerate(args) if _is_reference(arg)}
+
+
+def _build_test(item: Any, where: str, has_solution: bool,
+                values: dict) -> dict:
     _check_keys(item, TEST_KEYS, where)
     name = _require(item, "name", where)
     if name not in checks.available():
         raise ValueError(f"{where}: unknown check '{name}' "
                          f"(checks: {', '.join(checks.available())})")
-    params = item.get("params", {})
-    _check_type(params, dict, "params", where)
+    written = item.get("params", {})
+    _check_type(written, dict, "params", where)
+    params = _resolve(written, values, where)
     _check_params(name, params, where)
+    accepted = [parameter.name for parameter in checks.parameters(name)]
+    names = _reference_names(written)
+    if names and "names" in accepted:
+        params["names"] = {**names, **params.get("names", {})}
     if not has_solution and checks.needs_solution(name, params):
         raise ValueError(f"{where}: add 'expected' to the params "
                          "or a solution.py to compare with")
@@ -95,7 +139,8 @@ def _build_test(item: Any, where: str, has_solution: bool) -> dict:
             "hint": item.get("hint", ""), "label": label}
 
 
-def _build_criterion(item: Any, number: int, has_solution: bool) -> dict:
+def _build_criterion(item: Any, number: int, has_solution: bool,
+                     values: dict) -> dict:
     where = f"criterion {number}"
     _check_keys(item, CRITERION_KEYS, where)
     name = _require(item, "criterion", where)
@@ -106,7 +151,7 @@ def _build_criterion(item: Any, number: int, has_solution: bool) -> dict:
     tests_data = item.get("tests", [])
     _check_type(tests_data, list, "tests", where)
     tests = [
-        _build_test(test, f"{where}, test {index}", has_solution)
+        _build_test(test, f"{where}, test {index}", has_solution, values)
         for index, test in enumerate(tests_data, 1)
     ]
     return {
@@ -128,10 +173,12 @@ def parse_rules(text: str, has_solution: bool) -> dict:
     _check_keys(data, TOP_KEYS, "rules.json")
     for key in ("load_inputs", "ai_trap"):
         _check_type(data.get(key, []), list, key, "rules.json")
+    values = data.get("values", {})
+    _check_type(values, dict, "values", "rules.json")
     criteria_data = _require(data, "criteria", "rules.json")
     _check_type(criteria_data, list, "criteria", "rules.json")
     criteria = [
-        _build_criterion(item, number, has_solution)
+        _build_criterion(item, number, has_solution, values)
         for number, item in enumerate(criteria_data, 1)
     ]
     names = [criterion["name"] for criterion in criteria]

@@ -138,7 +138,16 @@ class ParseRulesTest(unittest.TestCase):
     def test_position_must_be_one_of_the_args(self) -> None:
         test = {"name": "mutates",
                 "params": {"function": "f", "args": [[1]], "position": 1}}
-        self.assert_error(one_test(test), "'position' 1 is not one of the args")
+        self.assert_error(one_test(test), "position 1 is not one of the args")
+
+    def test_call_positions(self) -> None:
+        call = {"name": "call",
+                "params": {"function": "f", "args": [[1]], "mutates": [1]}}
+        self.assert_error(one_test(call), "position 1 is not one of the args")
+        call["params"]["mutates"] = ["0"]
+        self.assert_error(one_test(call), "'position' must be an integer")
+        call["params"]["mutates"] = [0]
+        self.parse(one_test(call))
 
     def test_weight(self) -> None:
         self.assert_error(one_test({**returns_test(), "weight": -1}),
@@ -162,6 +171,36 @@ class ParseRulesTest(unittest.TestCase):
                   "params": {"function": "f", "contains": ["x"]}}
         self.parse(one_test(prints), False)
         self.parse(one_test({"name": "program", "params": {}}), False)
+
+    def test_shared_values(self) -> None:
+        grid = [[".", "#"], ["T", "."]]
+        text = json.dumps({"values": {"mapa": grid}, "criteria": [
+            {"criterion": "c", "points": 1, "tests": [
+                {"name": "mutates",
+                 "params": {"function": "f",
+                            "args": [{"$value": "mapa"}, 1]}},
+                {"name": "returns",
+                 "params": {"function": "f",
+                            "args": [{"$value": "mapa"}, 2],
+                            "names": {"0": "grelha"}}},
+                {"name": "program",
+                 "params": {"inputs": [], "contains": ["x"]}},
+            ]}]})
+        tests = self.parse(text)["criteria"][0]["tests"]
+        self.assertEqual(tests[0]["params"]["args"], [grid, 1])
+        self.assertEqual(tests[0]["params"]["names"], {"0": "mapa"})
+        self.assertEqual(tests[0]["label"],
+                         "f(mapa, 1): mapa depois da chamada")
+        self.assertEqual(tests[1]["label"], "f(grelha, 2)")
+        self.assertNotIn("names", tests[2]["params"])
+        tests[0]["params"]["args"][0][0][0] = "changed"
+        self.assertEqual(tests[1]["params"]["args"][0], grid)
+
+    def test_unknown_or_invalid_values(self) -> None:
+        self.assert_error(one_test(returns_test(args=[{"$value": "mapa"}])),
+                          "unknown value 'mapa' (values: none)")
+        self.assert_error('{"values": [], "criteria": []}',
+                          "'values' must be an object")
 
     def test_tuple_marker_shows_in_the_label(self) -> None:
         test = returns_test(args=[{"$tuple": [0, 0]}])

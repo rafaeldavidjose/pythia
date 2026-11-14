@@ -91,6 +91,7 @@ Like an egrader rules file, every test names a check, gives it a weight and pass
 | `title` | top | Name shown in the report. |
 | `load_inputs` | top | Answers given to `input()` when the file is loaded to collect its functions. |
 | `ai_trap` | top | Optional words from a hidden instruction in the assignment, see below. |
+| `values` | top | Values used by many tests, like a map. A param written as `{"$value": "mapa"}` gets a copy of `values.mapa`, and the report calls it `mapa`. |
 | `criteria` | top | List of criteria. The points should add up to the maximum grade. |
 | `criterion` | criterion | Name of the criterion. |
 | `points` | criterion | What the criterion is worth. |
@@ -102,7 +103,7 @@ Like an egrader rules file, every test names a check, gives it a weight and pass
 | `weight` | test | How much the test counts inside its criterion. 1 by default. |
 | `params` | test | The check's params. |
 | `hint` | test | Shown under the test when it fails. The same hint is shown once per criterion. |
-| `label` | test | Text for the test in the report. By default it is the call, like `media([10, 12, 14])`. |
+| `label` | test | Text for the test in the report. By default it is the call, like `media([10, 12, 14])`, followed by `: saída` for `prints` and `: notas depois da chamada` for `mutates`, since one call can have several tests. |
 
 A criterion's grade is its points times the weight of the passing tests over the total weight, rounded to 0.25.
 
@@ -117,6 +118,7 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 | `returns` | Calls a function and compares the value it returns. | `function`, `args`, `expected`, `inputs`, `names` |
 | `prints` | Calls a function and checks what it prints. | `function`, `args`, `expected`, `contains`, `excludes`, `inputs`, `names` |
 | `mutates` | Calls a function and compares one of its arguments after the call. | `function`, `args`, `position`, `expected`, `inputs`, `names` |
+| `call` | Calls a function and checks its value, output and arguments at once. The test passes only if all of them are right. | `function`, `args`, `expected`, `check_return`, `same_output`, `contains`, `excludes`, `mutates`, `inputs`, `names` |
 | `program` | Runs the whole file with answers to `input()` and checks the output. | `inputs`, `contains`, `excludes`, `must_finish` |
 | `defines` | Checks that the file defines a function with this name. | `function` |
 
@@ -126,10 +128,13 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 | `args` | List of arguments. JSON has no tuples, so write one as `{"$tuple": [0, 0]}`. |
 | `expected` | The right answer. Without it, the check runs `solution.py` with the same arguments and uses its answer. For `prints` it is the whole output. |
 | `inputs` | Answers given to `input()`, in order. |
-| `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. |
+| `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. An argument from `values` already gets its name. |
 | `contains` | Phrases that must appear in the output. With only `contains` or `excludes`, `prints` does not compare the whole output. |
 | `excludes` | Phrases that must not appear. |
 | `position` | Which argument `mutates` compares, counting from 0. |
+| `check_return` | `call` only. `false` ignores the value returned. `true` by default. |
+| `same_output` | `call` only. `true` compares what is printed with the solution's output. |
+| `mutates` | `call` only. Argument positions, like `[0]`, that must end up equal to the solution's after the call. |
 | `must_finish` | `program` only. The file cannot ask for more input than given. `true` by default. |
 
 Tuples and lists count as equal, numbers are compared to 6 decimal places, and output ignores case, accents and extra spaces, so a valid alternative solution is not penalised. `exit()` at the end of a program is fine.

@@ -229,6 +229,53 @@ def check_mutates(
     return [_failure(f"depois da chamada, {change}")]
 
 
+def check_call(
+    student: Submission,
+    solution: Submission,
+    function: str,
+    args: list | tuple = (),
+    expected: Any = NOT_GIVEN,
+    check_return: bool = True,
+    same_output: bool = False,
+    contains: list | tuple = (),
+    excludes: list | tuple = (),
+    mutates: list | tuple = (),
+    inputs: list | tuple = (),
+    names: dict | None = None,
+) -> list[dict]:
+    """Call a function and check its value, output and arguments at once."""
+    outcome, student_args = _call(student, function, args, inputs)
+    reference: list = []
+
+    def from_solution() -> tuple[Outcome, list]:
+        if not reference:
+            reference.append(_call_solution(solution, function, args, inputs))
+        return reference[0]
+
+    failures = []
+    if check_return:
+        if expected is NOT_GIVEN:
+            expected = from_solution()[0].returned
+        if not same(outcome.returned, expected):
+            failures.append(_failure(f"esperado {show(expected)}, "
+                                     f"obtido {show(outcome.returned)}"))
+    if same_output:
+        expected_output = from_solution()[0].output
+        if (normalized_lines(outcome.output)
+                != normalized_lines(expected_output)):
+            failures.append(_failure(
+                "saída diferente da esperada", expected_output.rstrip(),
+                outcome.output.rstrip() or "(sem saída)"))
+    failures += _phrase_failures(outcome.output, contains, excludes)
+    for position in mutates:
+        wanted = from_solution()[1][position]
+        if not same(student_args[position], wanted):
+            change = differences(student_args[position], wanted,
+                                 _argument_name(names, position))
+            failures.append(_failure(f"depois da chamada, {change}"))
+    return failures
+
+
 def check_program(
     student: Submission,
     solution: Submission,
@@ -300,6 +347,11 @@ def describe_parameters(name: str) -> list[str]:
 
 def needs_solution(name: str, params: dict) -> bool:
     """True when the test compares with solution.py for lack of expected."""
+    if name == "call":
+        compares_return = (params.get("check_return", True)
+                           and "expected" not in params)
+        return bool(compares_return or params.get("same_output")
+                    or params.get("mutates"))
     if "expected" in params:
         return False
     if name == "prints":
@@ -326,4 +378,11 @@ def default_label(name: str, params: dict) -> str:
         names.get(str(position), _show_argument(arg))
         for position, arg in enumerate(params.get("args", []))
     ]
-    return f"{params['function']}({', '.join(shown)})"
+    call = f"{params['function']}({', '.join(shown)})"
+    # One call can have several tests, so say what each one looks at
+    if name == "prints":
+        return f"{call}: saída"
+    if name == "mutates":
+        argument = _argument_name(names, params.get("position", 0))
+        return f"{call}: {argument} depois da chamada"
+    return call

@@ -4,6 +4,7 @@ import argparse
 import ast
 import json
 import os
+import subprocess
 import unittest
 
 import checks
@@ -15,13 +16,27 @@ TEXT_FILES = (".py", ".html", ".md", ".json", ".csv", ".bat", ".command",
               ".yml", ".txt")
 
 
+def _all_files() -> list[str]:
+    """The files in the repository, leaving out local and ignored ones."""
+    try:
+        command = ["git", "ls-files", "--cached", "--others",
+                   "--exclude-standard"]
+        listed = subprocess.run(command, cwd=REPO, check=True,
+                                capture_output=True, text=True).stdout
+        return [os.path.join(REPO, *line.split("/"))
+                for line in listed.splitlines()]
+    except (OSError, subprocess.CalledProcessError):
+        found = []
+        for folder, folders, names in os.walk(REPO):
+            folders[:] = [name for name in folders
+                          if name not in SKIP_FOLDERS]
+            found += [os.path.join(folder, name) for name in names]
+        return found
+
+
 def repo_files(*extensions: str) -> list[str]:
-    found = []
-    for folder, folders, names in os.walk(REPO):
-        folders[:] = [name for name in folders if name not in SKIP_FOLDERS]
-        found += [os.path.join(folder, name) for name in names
-                  if name.endswith(extensions)]
-    return sorted(found)
+    return sorted(path for path in _all_files()
+                  if path.endswith(extensions) and os.path.exists(path))
 
 
 def read(path: str) -> str:

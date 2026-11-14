@@ -61,9 +61,9 @@
         {"name": "mutates",
          "params": {"function": "subir_notas", "args": [[10, 12], 2]},
          "hint": "A função altera a lista recebida, não cria outra."},
-        {"name": "mutates",
+        {"name": "call",
          "params": {"function": "subir_notas", "args": [[18, 20], 5],
-                    "expected": [20, 20]},
+                    "mutates": [0]},
          "hint": "Nenhuma nota passa de 20."}
       ]
     },
