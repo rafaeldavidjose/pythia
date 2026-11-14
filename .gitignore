@@ -1,4 +1,5 @@
 __pycache__/
 students.csv
 data/*
+submissions/
 !data/.keep

@@ -16,6 +16,12 @@ Copy `students.example.csv` to `students.csv` and put your roster in it (`number
 
 The browser opens at http://127.0.0.1:8765. Keep the terminal open while you use it. Everything is saved in `data/`.
 
+## Try the example
+
+The repo comes with a small exercise, `Exercise_1`, and five fake submissions in `examples/entrega1`. Copy `students.example.csv` to `students.csv`, start the app, pick `Exercise_1`, type `examples/entrega1` in the folder field and click **Import folder**, then **Grade new**.
+
+You get one of each case: a copy of the solution (20), a valid alternative implementation (20), a file with typical mistakes, a syntax error and an infinite loop. Delete `exercises/Exercise_1` and `examples/` when you start with your own.
+
 ## Grading
 
 1. Download the submissions from Moodle and unzip them into `submissions/entregaN`.
@@ -39,7 +45,7 @@ An exercise is a folder in `exercises/` with two files:
 - `solution.py` is the reference solution. The tests compare the student's code with it.
 - `criteria.py` says what to test and how much each criterion is worth.
 
-Create it in the **Exercises** tab or copy the folder into `exercises/`. Saving with an existing name replaces the files. No exercises are included.
+Create it in the **Exercises** tab or copy the folder into `exercises/`. Saving with an existing name replaces the files. `exercises/Exercise_1` is a complete example to copy from.
 
 ```python
 from checks import call, criterion, named, program
