@@ -41,7 +41,7 @@ def evaluate_in_background(ex_id: str, ids: list[str]) -> None:
             progress["done"] += 1
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(evaluate_one, i) for i in ids]
+        futures = [pool.submit(evaluate_one, student_id) for student_id in ids]
         for future in futures:
             try:
                 future.result()
@@ -174,8 +174,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_get(self, path: str, query: dict) -> None:
         if path == "/":
-            with open(PAGE, "rb") as f:
-                self.send(f.read(), content_type="text/html")
+            with open(PAGE, "rb") as file:
+                self.send(file.read(), content_type="text/html")
         elif path == "/api/exercises":
             self.send(engine.list_exercises())
         elif path == "/api/exercise_file":
@@ -224,7 +224,8 @@ class Handler(BaseHTTPRequestHandler):
             ex_id = engine.save_exercise(body["id"], body.get("solution"),
                                          body.get("criteria"))
             exercises = engine.list_exercises()
-            self.send(next(e for e in exercises if e["id"] == ex_id))
+            self.send(next(exercise for exercise in exercises
+                           if exercise["id"] == ex_id))
         elif path == "/api/import_folder":
             files = engine.read_folder(body["folder"])
             self.send(engine.import_submissions(body["ex"], files))

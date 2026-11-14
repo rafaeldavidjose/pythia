@@ -39,7 +39,7 @@ if BASE not in sys.path:
 
 def strip_accents(text: str) -> str:
     text = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in text if not unicodedata.combining(c))
+    return "".join(char for char in text if not unicodedata.combining(char))
 
 
 def slug(text: str) -> str:
@@ -48,8 +48,8 @@ def slug(text: str) -> str:
 
 
 def read_text(path: str) -> str:
-    with open(path, "rb") as f:
-        raw = f.read()
+    with open(path, "rb") as file:
+        raw = file.read()
     for encoding in ("utf-8", "cp1252", "latin-1"):
         try:
             return raw.decode(encoding)
@@ -59,10 +59,10 @@ def read_text(path: str) -> str:
 
 
 def write_json(path: str, data: Any) -> None:
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=1)
+    os.replace(temp_path, path)
 
 
 def grade_text(value: float | None) -> str:
@@ -185,18 +185,19 @@ def list_exercises() -> list[dict]:
                 info["title"] = ex["title"]
                 info["criteria"] = [
                     {
-                        "name": c["name"],
-                        "points": c["points"],
-                        "tests": len(c["tests"]),
-                        "description": c["description"],
-                        "review": c["review"],
+                        "name": criterion["name"],
+                        "points": criterion["points"],
+                        "tests": len(criterion["tests"]),
+                        "description": criterion["description"],
+                        "review": criterion["review"],
                     }
-                    for c in ex["criteria"]
+                    for criterion in ex["criteria"]
                 ]
-                info["total"] = sum(c["points"] for c in ex["criteria"])
+                info["total"] = sum(
+                    criterion["points"] for criterion in ex["criteria"])
                 info["ai_trap"] = ex["ai_trap"]
-            except Exception as e:
-                info["error"] = type(e).__name__ + ": " + str(e)
+            except Exception as error:
+                info["error"] = type(error).__name__ + ": " + str(error)
         result.append(info)
     return result
 
@@ -212,8 +213,8 @@ def save_exercise(
         if content is None:
             continue
         path = os.path.join(folder, filename)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(content)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(content)
     return ex_id
 
 
@@ -227,8 +228,8 @@ def data_dir(ex_id: str) -> str:
 def load_state(ex_id: str) -> dict:
     path = os.path.join(DATA_DIR, ex_id, "state.json")
     if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        with open(path, encoding="utf-8") as file:
+            return json.load(file)
     return {"students": {}}
 
 
@@ -379,8 +380,8 @@ def read_folder(path: str) -> list[tuple[str, bytes]]:
                 continue
             full_path = os.path.join(folder, name)
             relative = os.path.relpath(full_path, path).replace(os.sep, "/")
-            with open(full_path, "rb") as f:
-                files.append((root + "/" + relative, f.read()))
+            with open(full_path, "rb") as file:
+                files.append((root + "/" + relative, file.read()))
     if not files:
         raise ValueError("No .py or .zip files in " + path)
     return files
@@ -402,8 +403,8 @@ def import_submissions(ex_id: str, files: list[tuple[str, bytes]]) -> dict:
             safe = re.sub(r"[^\w.\- ]", "_", name)
             while safe in names:
                 safe = "_" + safe
-            with open(os.path.join(folder, safe), "wb") as f:
-                f.write(data)
+            with open(os.path.join(folder, safe), "wb") as file:
+                file.write(data)
             names.append(safe)
         if student_id in state["students"]:
             updated.append(student_id)
@@ -426,9 +427,9 @@ def import_submissions(ex_id: str, files: list[tuple[str, bytes]]) -> dict:
         "added": len(added),
         "updated": len(updated),
         "unrecognized": [
-            state["students"][i]["source"]
-            for i in added + updated
-            if not state["students"][i]["recognized"]
+            state["students"][student_id]["source"]
+            for student_id in added + updated
+            if not state["students"][student_id]["recognized"]
         ],
     }
 
@@ -449,22 +450,23 @@ def _run_tests(
     student_file: str, ex: dict, tests: list[dict], timeout: float
 ) -> dict | None:
     """Run tests in a separate process. Returns None on timeout."""
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = os.path.join(tmp, os.path.basename(student_file))
-        shutil.copy(student_file, copy)
-        job_file = os.path.join(tmp, "_job.pkl")
-        result_file = os.path.join(tmp, "_result.json")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        student_copy = os.path.join(
+            temp_dir, os.path.basename(student_file))
+        shutil.copy(student_file, student_copy)
+        job_file = os.path.join(temp_dir, "_job.pkl")
+        result_file = os.path.join(temp_dir, "_result.json")
         job = {
-            "student": copy,
+            "student": student_copy,
             "solution": ex["solution"],
             "load_inputs": ex["load_inputs"],
             "tests": tests,
         }
-        with open(job_file, "wb") as f:
-            pickle.dump(job, f)
+        with open(job_file, "wb") as file:
+            pickle.dump(job, file)
         command = [sys.executable, "-I", RUNNER, job_file, result_file]
         try:
-            subprocess.run(command, cwd=tmp, timeout=timeout,
+            subprocess.run(command, cwd=temp_dir, timeout=timeout,
                            stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
@@ -477,8 +479,8 @@ def _run_tests(
                              "error": "o programa terminou de forma "
                                       "inesperada"},
                     "results": [crashed] * len(tests)}
-        with open(result_file, encoding="utf-8") as f:
-            return json.load(f)
+        with open(result_file, encoding="utf-8") as file:
+            return json.load(file)
 
 
 def _score_criterion(criterion: dict, results: list[dict]) -> dict:
@@ -496,7 +498,7 @@ def _score_criterion(criterion: dict, results: list[dict]) -> dict:
             continue
         hint = test.get("hint") or ""
         for item in result["failures"]:
-            if any(f["message"] == item["message"] for f in failures):
+            if any(known["message"] == item["message"] for known in failures):
                 continue
             item = dict(item)
             if hint and hint not in hints_used:
@@ -527,14 +529,14 @@ def evaluate_student(ex: dict, record: dict) -> dict:
 
     if not student_file or not os.path.exists(student_file):
         criteria = [
-            _score_criterion(c, [no_results] * len(c["tests"]))
-            for c in ex["criteria"]
+            _score_criterion(criterion, [no_results] * len(criterion["tests"]))
+            for criterion in ex["criteria"]
         ]
         load_info = {"ok": False, "error": "nenhum ficheiro .py entregue"}
         return {"load": load_info, "criteria": criteria, "ai_trap": [],
                 "date": now}
 
-    tests = [test for c in ex["criteria"] for test in c["tests"]]
+    tests = [test for criterion in ex["criteria"] for test in criterion["tests"]]
     batch = _run_tests(student_file, ex, tests, STUDENT_TIMEOUT)
     if batch is not None:
         load_info = batch["load"]
@@ -571,7 +573,10 @@ def evaluate_student(ex: dict, record: dict) -> dict:
 def apply_evaluation(record: dict, evaluation: dict) -> None:
     """Store a fresh automatic evaluation, resetting grades and comments."""
     record["evaluation"] = evaluation
-    record["grades"] = {c["name"]: c["auto"] for c in evaluation["criteria"]}
+    record["grades"] = {
+        criterion["name"]: criterion["auto"]
+        for criterion in evaluation["criteria"]
+    }
     record["comments"] = {}
     record["finalized"] = False
 
@@ -585,7 +590,8 @@ def final_grade(record: dict) -> float | None:
     if not record.get("evaluation"):
         return None
     criteria = record["evaluation"]["criteria"]
-    return round(sum(criterion_grade(record, c) for c in criteria), 2)
+    grades = [criterion_grade(record, criterion) for criterion in criteria]
+    return round(sum(grades), 2)
 
 
 def needs_review(record: dict) -> bool:
@@ -596,7 +602,8 @@ def needs_review(record: dict) -> bool:
     if not evaluation["load"]["ok"]:
         return True
     return any(failure.get("timeout")
-               for c in evaluation["criteria"] for failure in c["failures"])
+               for criterion in evaluation["criteria"]
+               for failure in criterion["failures"])
 
 
 # Reports (Portuguese, for students)
@@ -622,7 +629,7 @@ def _failure_lines(failure: dict) -> list[str]:
 def report_md(ex: dict, record: dict) -> str:
     evaluation = record["evaluation"]
     criteria = evaluation["criteria"]
-    total = sum(c["points"] for c in criteria)
+    total = sum(criterion["points"] for criterion in criteria)
     student = record["name"]
     if record["number"]:
         student += f" ({record['number']})"
@@ -646,25 +653,29 @@ def report_md(ex: dict, record: dict) -> str:
         lines += [f"Erro ao executar o ficheiro: {error}.", ""]
 
     lines += ["| Critério | Testes | Nota |", "|---|---|---|"]
-    for c in criteria:
-        grade = _fraction(criterion_grade(record, c), c["points"])
-        lines.append(
-            f"| {c['name']} | {c['passed']}/{c['total']} | {grade} |")
+    for criterion in criteria:
+        grade = _fraction(
+            criterion_grade(record, criterion), criterion["points"])
+        tests = f"{criterion['passed']}/{criterion['total']}"
+        lines.append(f"| {criterion['name']} | {tests} | {grade} |")
     lines += ["", "## Resultados por critério", ""]
 
-    for c in criteria:
-        grade = _fraction(criterion_grade(record, c), c["points"])
-        lines += [f"### {c['name']} · {grade}", ""]
-        if c["passed"] == c["total"]:
-            lines.append(f"Todos os testes passaram ({c['total']}/"
-                         f"{c['total']}).")
-        elif not c["failures"]:
+    for criterion in criteria:
+        grade = _fraction(
+            criterion_grade(record, criterion), criterion["points"])
+        lines += [f"### {criterion['name']} · {grade}", ""]
+        if criterion["passed"] == criterion["total"]:
+            lines.append(f"Todos os testes passaram ({criterion['total']}/"
+                         f"{criterion['total']}).")
+        elif not criterion["failures"]:
             lines.append("Não executado.")
         else:
-            lines += [f"Testes certos: {c['passed']}/{c['total']}.", ""]
-            for failure in c["failures"]:
+            lines += [f"Testes certos: {criterion['passed']}/"
+                      f"{criterion['total']}.", ""]
+            for failure in criterion["failures"]:
                 lines += _failure_lines(failure)
-        comment = (record.get("comments", {}).get(c["name"]) or "").strip()
+        comments = record.get("comments", {})
+        comment = (comments.get(criterion["name"]) or "").strip()
         if comment:
             lines += ["", f"Comentário: {comment}"]
         lines.append("")
@@ -688,7 +699,8 @@ def report_text(ex: dict, record: dict) -> str:
     text = re.sub(r"^#+\s*", "", text, flags=re.M)
     text = text.replace("**", "").replace("```", "")
     text = re.sub(r"^\|---.*\n", "", text, flags=re.M)
-    text = re.sub(r"^\| (.*) \|$", lambda m: m.group(1).replace(" | ", "  "),
+    text = re.sub(r"^\| (.*) \|$",
+                  lambda match: match.group(1).replace(" | ", "  "),
                   text, flags=re.M)
     text = re.sub(r"^---$", "", text, flags=re.M)
     return re.sub(r"\n{3,}", "\n\n", text)
@@ -701,7 +713,8 @@ def report_name(ex_id: str, record: dict) -> str:
 
 def _grades_csv(state: dict, ids: list[str]) -> str:
     rows = ["Número;Nome;Turma;Nota;Finalizado"]
-    records = sorted(state["students"].values(), key=lambda r: r["name"])
+    records = sorted(state["students"].values(),
+                     key=lambda record: record["name"])
     for record in records:
         if record["id"] not in ids:
             continue
@@ -740,6 +753,6 @@ def export_reports(
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for filename, content in outputs.items():
             archive.writestr(filename, content)
-            with open(os.path.join(out_dir, filename), "wb") as f:
-                f.write(content)
+            with open(os.path.join(out_dir, filename), "wb") as file:
+                file.write(content)
     return buffer.getvalue(), out_dir, len(exported)

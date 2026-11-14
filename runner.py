@@ -36,7 +36,7 @@ class LimitedOutput(io.StringIO):
 
 def normalize(text: Any) -> str:
     text = unicodedata.normalize("NFKD", str(text))
-    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = "".join(char for char in text if not unicodedata.combining(char))
     return " ".join(text.lower().split())
 
 
@@ -56,12 +56,13 @@ def normalized_value(value: Any) -> Any:
     return value
 
 
-def same(a: Any, b: Any) -> bool:
+def same(left: Any, right: Any) -> bool:
     """Compare values, treating tuples and lists as equivalent."""
-    if isinstance(a, bool) or isinstance(b, bool):
-        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(left, bool) or isinstance(right, bool):
+        both_bool = isinstance(left, bool) and isinstance(right, bool)
+        return both_bool and left == right
     try:
-        return normalized_value(a) == normalized_value(b)
+        return normalized_value(left) == normalized_value(right)
     except Exception:
         return False
 
@@ -155,8 +156,8 @@ def load(
     filename: str, inputs: list[str]
 ) -> tuple[dict, CodeType | None, BaseException | None]:
     """Execute the file and return its namespace and compiled code."""
-    with open(filename, "rb") as f:
-        raw = f.read()
+    with open(filename, "rb") as file:
+        raw = file.read()
     try:
         source = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -268,8 +269,8 @@ def test_program(
 
 def main() -> None:
     job_file, result_file = sys.argv[1], sys.argv[2]
-    with open(job_file, "rb") as f:
-        job = pickle.load(f)
+    with open(job_file, "rb") as file:
+        job = pickle.load(file)
     sys.setrecursionlimit(3000)
     student_file = job["student"]
     solution_ns, _, _ = load(job["solution"], job["load_inputs"])
@@ -295,8 +296,8 @@ def main() -> None:
             result = _result([failure(message)])
         results.append(result)
 
-    with open(result_file, "w", encoding="utf-8") as f:
-        json.dump({"load": load_info, "results": results}, f,
+    with open(result_file, "w", encoding="utf-8") as file:
+        json.dump({"load": load_info, "results": results}, file,
                   ensure_ascii=False)
 
 
