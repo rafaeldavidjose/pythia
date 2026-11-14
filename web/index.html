@@ -115,6 +115,8 @@ h3 { font-size: 14px; margin: 0; }
 .criterion.good { border-left: 3px solid var(--ok); }
 .criterion-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .criterion input[type=number] { width: 72px; }
+.tests { list-style: none; margin: 0 0 8px; padding: 0; font-size: 13px; }
+.tests li { margin-bottom: 3px; }
 .failures { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
 .failures li { margin-bottom: 4px; }
 .failures .hint { color: var(--muted); }
@@ -561,8 +563,17 @@ function criterionClass(c, value) {
   return value <= 0 ? "bad" : "partial";
 }
 
+function renderTests(c) {
+  if (!c.results) return "";
+  return '<ul class="tests">' + c.results.map((test, index) => {
+    const pill = test.ok ? ["p-ok", "passed"]
+      : test.ran ? ["p-bad", "failed"] : ["p-warn", "not run"];
+    return `<li><span class="pill ${pill[0]}">${pill[1]}</span> Test ${index + 1}: ${esc(test.label)}</li>`;
+  }).join("") + "</ul>";
+}
+
 function renderFailures(c) {
-  if (c.passed === c.total) return '<p class="muted small" style="margin:0 0 8px">All tests passed.</p>';
+  if (!c.failures.length) return "";
   return '<ul class="failures">' + c.failures.map(f => `<li>
       ${esc(f.message)}
       ${f.expected_output !== undefined
@@ -584,6 +595,7 @@ function renderCriterion(c, index) {
       <label class="small"><input type="number" class="grade-input" min="0" max="${c.points}"
         step="0.25" value="${value}"> / ${grade(c.points)}</label>
     </div>
+    ${renderTests(c)}
     ${renderFailures(c)}
     <textarea class="comment-input" rows="1"
       placeholder="Optional comment (shown in the report, in Portuguese)">${esc(pageData.comments[c.name] || "")}</textarea>

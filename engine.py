@@ -508,6 +508,11 @@ def _score_criterion(criterion: dict, results: list[dict]) -> dict:
     if failures and criterion.get("hint") and not hints_used:
         failures.append({"message": "", "hint": criterion["hint"]})
     raw_grade = criterion["points"] * passed_weight / total_weight
+    test_results = [
+        {"label": test["label"], "ok": result["ok"],
+         "ran": result["ok"] or bool(result["failures"])}
+        for test, result in zip(tests, results)
+    ]
     return {
         "name": criterion["name"],
         "points": criterion["points"],
@@ -515,6 +520,7 @@ def _score_criterion(criterion: dict, results: list[dict]) -> dict:
         "passed": passed,
         "total": len(tests),
         "failures": failures,
+        "results": test_results,
         "review": criterion["review"],
     }
 
@@ -626,6 +632,19 @@ def _failure_lines(failure: dict) -> list[str]:
     return lines
 
 
+def _test_lines(criterion: dict) -> list[str]:
+    lines = []
+    for number, test in enumerate(criterion.get("results", []), 1):
+        if test["ok"]:
+            status = "passou"
+        elif test["ran"]:
+            status = "falhou"
+        else:
+            status = "não executado"
+        lines.append(f"- [{status}] Teste {number}: {test['label']}")
+    return lines
+
+
 def report_md(ex: dict, record: dict) -> str:
     evaluation = record["evaluation"]
     criteria = evaluation["criteria"]
@@ -642,7 +661,10 @@ def report_md(ex: dict, record: dict) -> str:
     ]
     if record.get("file"):
         lines.append(f"**Ficheiro:** {record['file']}")
-    lines += [f"**Nota:** {_fraction(final_grade(record), total)}", ""]
+    passed = sum(criterion["passed"] for criterion in criteria)
+    tests = sum(criterion["total"] for criterion in criteria)
+    lines += [f"**Nota:** {_fraction(final_grade(record), total)}",
+              f"**Testes certos:** {passed}/{tests}", ""]
 
     error = evaluation["load"].get("error")
     syntax_error = bool(error) and error.startswith("SyntaxError")
@@ -664,14 +686,11 @@ def report_md(ex: dict, record: dict) -> str:
         grade = _fraction(
             criterion_grade(record, criterion), criterion["points"])
         lines += [f"### {criterion['name']} · {grade}", ""]
-        if criterion["passed"] == criterion["total"]:
-            lines.append(f"Todos os testes passaram ({criterion['total']}/"
-                         f"{criterion['total']}).")
-        elif not criterion["failures"]:
-            lines.append("Não executado.")
-        else:
-            lines += [f"Testes certos: {criterion['passed']}/"
-                      f"{criterion['total']}.", ""]
+        lines += [f"Testes certos: {criterion['passed']}/"
+                  f"{criterion['total']}.", ""]
+        lines += _test_lines(criterion)
+        if criterion["failures"]:
+            lines += ["", "Detalhe das falhas:", ""]
             for failure in criterion["failures"]:
                 lines += _failure_lines(failure)
         comments = record.get("comments", {})

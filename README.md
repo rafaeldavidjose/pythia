@@ -27,10 +27,10 @@ You get one of each case: a copy of the solution (20), a valid alternative imple
 1. Download the submissions from Moodle and unzip them into `submissions/entregaN`.
 2. Pick the exercise. The folder field suggests `entregaN` from the number at the end of the exercise name (`Exercise_1` gives `entrega1`). Click **Import folder**. **Choose folders**, **Import zip** and drag and drop also work.
 3. Click **Grade new**.
-4. Open each student. You see the tests that passed and failed for every criterion. You can change the grade and add a comment, which goes in the report.
+4. Open each student. You see every test of each criterion, numbered, with passed or failed, and the details of the failures. You can change the grade and add a comment, which goes in the report.
 5. Click **Save** and tick **Finalized** when you are done with that student.
 6. **Copy report for Moodle** copies the plain-text report.
-7. **Export reports** writes a `.md` and/or `.pdf` per student and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
+7. **Export reports** writes a `.md` and/or `.pdf` per student (each report lists every test with passou, falhou or não executado) and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
 
 Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. The full name is matched against the roster by first and last name, ignoring "de", "da", "dos" and so on. The number in the file name does not matter. If it belongs to someone else, the student page shows a warning. "unknown" means no match, so fix the name or number on that page.
 
