@@ -1,19 +1,14 @@
 """
 Building blocks for each exercise's criteria.py.
 
-A criterion groups tests and is worth a number of points. Its automatic grade
-is proportional to the weight of the tests that pass, rounded to 0.25.
+A criterion groups tests and is worth some points. Its grade is the share of
+passing tests (by weight), rounded to 0.25.
 
-Available tests:
+call() runs a function of the student and of the solution with the same
+arguments and compares them. program() runs the whole file with fixed answers
+to input() and looks for phrases in the output.
 
-    call(func, *args, ...)   calls the student's function and the reference
-                             solution's function with the same arguments and
-                             compares the results
-    program(inputs, ...)     runs the whole file with these answers to input()
-                             and looks for phrases in the output
-
-Labels, descriptions and hints are shown to students in the reports, so they
-are written in Portuguese.
+Labels, descriptions and hints go into the reports, so they are in Portuguese.
 """
 
 from typing import Any
@@ -43,12 +38,8 @@ def criterion(
     review: bool = False,
 ) -> dict:
     """
-    name         short name shown in the report table
-    points       maximum grade for this criterion
-    tests        list of call(...) / program(...) tests
-    description  what was asked (shown in the Exercises tab)
-    hint         shown when a test fails and that test has no hint of its own
-    review       True to flag this criterion for manual review
+    hint is used when a test fails and has no hint of its own. review flags
+    the criterion for manual checking.
     """
     return {
         "name": name,
@@ -75,15 +66,10 @@ def call(
     label: str | None = None,
 ) -> dict:
     """
-    check_return     compare the returned value with the solution's
-    expected         compare with this value instead of the solution's
-    output           "equal" compares what the function prints with the
-                     solution (ignores whitespace, case and accents)
-    output_contains  phrases that must appear in what the function prints
-    output_excludes  phrases that must not appear
-    mutates          argument positions (0, 1, ...) whose state after the call
-                     must match the solution's
-    inputs           answers given to input() during the call
+    By default the return value is compared with the solution's. expected
+    replaces that with a fixed value. output="equal" compares what is printed
+    (ignoring whitespace, case and accents). mutates lists the argument
+    positions that must end up equal to the solution's. inputs feeds input().
     """
     if label is None:
         label = f"{func}({', '.join(_show(arg) for arg in args)})"
@@ -119,11 +105,8 @@ def program(
     label: str | None = None,
 ) -> dict:
     """
-    inputs       answers given to input(), in order
-    contains     phrases that must appear in the output (case, accents and
-                 extra spaces are ignored)
-    excludes     phrases that must not appear
-    must_finish  the program must end without asking for more inputs
+    Phrases in contains and excludes ignore case, accents and extra spaces.
+    With must_finish the program cannot ask for more input than given.
     """
     if label is None:
         label = f"programa com as entradas {', '.join(inputs)}"
