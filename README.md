@@ -89,7 +89,7 @@ Like an egrader rules file, every test names a check, gives it a weight and pass
 | `title` | top | Name shown in the report. |
 | `load_inputs` | top | Answers given to `input()` when the file is loaded to collect its functions. |
 | `ai_trap` | top | Optional words from a hidden instruction in the assignment, see below. |
-| `values` | top | Values used by many tests, like a map. A param written as `{"$value": "mapa"}` gets a copy of `values.mapa`, and the report calls it `mapa`. |
+| `values` | top | Values used by many tests, like a map. A param written as `{"$value": "mapa"}` gets a copy of `values.mapa`. The report writes the value out, or calls it `mapa` when it is too long, like a 5x5 grid. |
 | `criteria` | top | List of criteria. The points should add up to the maximum grade. |
 | `criterion` | criterion | Name of the criterion. |
 | `points` | criterion | What the criterion is worth. |
@@ -126,7 +126,7 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 | `args` | List of arguments. JSON has no tuples, so write one as `{"$tuple": [0, 0]}`. |
 | `expected` | The right answer. Without it, the check runs `solution.py` with the same arguments and uses its answer. For `prints` it is the whole output. |
 | `inputs` | Answers given to `input()`, in order. |
-| `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. An argument from `values` already gets its name. |
+| `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. An argument from `values` that is too long to write out already gets its name. |
 | `contains` | Phrases that must appear in the output. With only `contains` or `excludes`, `prints` does not compare the whole output. |
 | `excludes` | Phrases that must not appear. |
 | `position` | Which argument `mutates` compares, counting from 0. |

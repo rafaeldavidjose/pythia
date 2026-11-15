@@ -359,9 +359,13 @@ def needs_solution(name: str, params: dict) -> bool:
     return name in ("returns", "mutates")
 
 
+def fits_in_label(value: Any) -> bool:
+    """Short enough to be written out in a report label."""
+    return len(repr(value)) <= 40
+
+
 def _show_argument(value: Any) -> str:
-    text = repr(value)
-    return text if len(text) <= 40 else "[...]"
+    return repr(value) if fits_in_label(value) else "[...]"
 
 
 def default_label(name: str, params: dict) -> str:

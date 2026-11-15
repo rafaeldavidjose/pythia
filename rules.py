@@ -5,7 +5,8 @@ check's function in checks.py, so a typo is reported with its place in the
 file instead of failing silently while grading.
 
 A value used by many tests, like a map, can be written once under "values"
-and used as {"$value": "mapa"}. In the report it shows as mapa.
+and used as {"$value": "mapa"}. When it is too long to write out in the
+report, it shows there as mapa.
 """
 
 import copy
@@ -102,13 +103,20 @@ def _resolve(value: Any, values: dict, where: str) -> Any:
     return value
 
 
-def _reference_names(params: dict) -> dict:
-    """An argument given as {"$value": "mapa"} is called mapa in reports."""
-    args = params.get("args")
+def _reference_names(written: dict, params: dict) -> dict:
+    """
+    A shared value too long for the label, like a map, shows by its name.
+    Shorter ones are written out, so the report shows the real arguments.
+    """
+    args = written.get("args")
     if not isinstance(args, list):
         return {}
-    return {str(position): arg["$value"]
-            for position, arg in enumerate(args) if _is_reference(arg)}
+    return {
+        str(position): arg["$value"]
+        for position, arg in enumerate(args)
+        if _is_reference(arg)
+        and not checks.fits_in_label(checks.decode(params["args"][position]))
+    }
 
 
 def _build_test(item: Any, where: str, has_solution: bool,
@@ -123,7 +131,7 @@ def _build_test(item: Any, where: str, has_solution: bool,
     params = _resolve(written, values, where)
     _check_params(name, params, where)
     accepted = [parameter.name for parameter in checks.parameters(name)]
-    names = _reference_names(written)
+    names = _reference_names(written, params)
     if names and "names" in accepted:
         params["names"] = {**names, **params.get("names", {})}
     if not has_solution and checks.needs_solution(name, params):

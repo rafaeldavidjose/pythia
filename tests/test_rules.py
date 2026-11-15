@@ -173,26 +173,29 @@ class ParseRulesTest(unittest.TestCase):
         self.parse(one_test({"name": "program", "params": {}}), False)
 
     def test_shared_values(self) -> None:
-        grid = [[".", "#"], ["T", "."]]
-        text = json.dumps({"values": {"mapa": grid}, "criteria": [
-            {"criterion": "c", "points": 1, "tests": [
-                {"name": "mutates",
-                 "params": {"function": "f",
-                            "args": [{"$value": "mapa"}, 1]}},
-                {"name": "returns",
-                 "params": {"function": "f",
-                            "args": [{"$value": "mapa"}, 2],
-                            "names": {"0": "grelha"}}},
-                {"name": "program",
-                 "params": {"inputs": [], "contains": ["x"]}},
-            ]}]})
+        grid = [["."] * 5 for _ in range(5)]
+        small = [[".", "#"], ["T", "."]]
+        text = json.dumps({"values": {"mapa": grid, "pequeno": small},
+                           "criteria": [{"criterion": "c", "points": 1,
+                                         "tests": [
+            {"name": "mutates",
+             "params": {"function": "f", "args": [{"$value": "mapa"}, 1]}},
+            {"name": "returns",
+             "params": {"function": "f", "args": [{"$value": "mapa"}, 2],
+                        "names": {"0": "grelha"}}},
+            {"name": "returns",
+             "params": {"function": "f", "args": [{"$value": "pequeno"}]}},
+            {"name": "program", "params": {"inputs": [], "contains": ["x"]}},
+        ]}]})
         tests = self.parse(text)["criteria"][0]["tests"]
         self.assertEqual(tests[0]["params"]["args"], [grid, 1])
         self.assertEqual(tests[0]["params"]["names"], {"0": "mapa"})
         self.assertEqual(tests[0]["label"],
                          "f(mapa, 1): mapa depois da chamada")
         self.assertEqual(tests[1]["label"], "f(grelha, 2)")
+        self.assertEqual(tests[2]["label"], f"f({small!r})")
         self.assertNotIn("names", tests[2]["params"])
+        self.assertNotIn("names", tests[3]["params"])
         tests[0]["params"]["args"][0][0][0] = "changed"
         self.assertEqual(tests[1]["params"]["args"][0], grid)
 
