@@ -193,8 +193,7 @@ class Handler(BaseHTTPRequestHandler):
             ids = query["ids"].split(",")
         else:
             ids = list(engine.load_state(ex_id)["students"])
-        formats = query.get("formats", "md,pdf").split(",")
-        data, folder, count = engine.export_reports(ex_id, ids, formats)
+        data, folder, count = engine.export_reports(ex_id, ids)
         headers = {
             "Content-Disposition":
                 f'attachment; filename="{ex_id}_reports.zip"',

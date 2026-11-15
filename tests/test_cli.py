@@ -78,11 +78,12 @@ class GradingCommandsTest(CliTestCase):
             ["20000002", "Bruno", "Costa", "0", "0/3", "graded"],
         ])
 
-        out = self.run_cli("report", "Dobro", "--export", "md,txt")[1]
+        out = self.run_cli("report", "Dobro", "--export")[1]
         self.assertIn("2 reports written to ", out)
         reports = os.listdir(os.path.join(self.data_dir, "Dobro", "reports"))
-        self.assertIn("Dobro_20000001_Ana_Silva.txt", reports)
-        self.assertNotIn("Dobro_20000001_Ana_Silva.pdf", reports)
+        self.assertEqual(sorted(reports), [
+            "Dobro_20000001_Ana_Silva.md", "Dobro_20000002_Bruno_Costa.md",
+            "Dobro_notas.csv"])
 
     def test_report_before_grading(self) -> None:
         self.run_cli("import", "Dobro", self.folder)

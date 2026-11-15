@@ -89,8 +89,7 @@ def command_report(args: argparse.Namespace) -> int:
                                          record["name"]))
     if args.export:
         ids = [record["id"] for record in records if record.get("evaluation")]
-        formats = args.export.split(",")
-        _, folder, count = engine.export_reports(args.exercise, ids, formats)
+        _, folder, count = engine.export_reports(args.exercise, ids)
         print(f"{count} reports written to {folder}")
         return 0
 
@@ -148,8 +147,8 @@ def build_parser() -> argparse.ArgumentParser:
     report = commands.add_parser(
         "report", help="show the grades or export the reports")
     report.add_argument("exercise")
-    report.add_argument("--export", metavar="FORMATS",
-                        help="write reports, e.g. md,pdf,txt")
+    report.add_argument("--export", action="store_true",
+                        help="write a .md report per student")
     report.set_defaults(func=command_report)
     return parser
 

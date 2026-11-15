@@ -168,27 +168,20 @@ class ExportTest(ProjectTestCase):
         engine.save_state("Exercise_1", {"students": {
             "20000001": graded, "20000002": waiting}})
 
-    def test_writes_every_format_and_a_zip(self) -> None:
+    def test_writes_markdown_reports_grades_and_a_zip(self) -> None:
         data, folder, count = engine.export_reports(
-            "Exercise_1", ["20000001", "20000002"], ["md", "pdf", "txt"])
+            "Exercise_1", ["20000001", "20000002"])
         self.assertEqual(count, 1)
-        base = "Exercise_1_20000001_Ana_Silva"
-        names = [base + ".md", base + ".pdf", base + ".txt",
-                 "Exercise_1_notas.csv"]
+        names = ["Exercise_1_20000001_Ana_Silva.md", "Exercise_1_notas.csv"]
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            self.assertEqual(sorted(archive.namelist()), sorted(names))
-            grades = archive.read("Exercise_1_notas.csv").decode("utf-8-sig")
-        self.assertEqual(sorted(os.listdir(folder)), sorted(names))
+            self.assertEqual(sorted(archive.namelist()), names)
+            report = archive.read(names[0]).decode("utf-8")
+            grades = archive.read(names[1]).decode("utf-8-sig")
+        self.assertEqual(sorted(os.listdir(folder)), names)
+        self.assertTrue(report.startswith("# Relatório de avaliação"))
         self.assertEqual(grades.splitlines(),
                          ["Número;Nome;Turma;Nota;Finalizado",
                           "20000001;Ana Silva;1;2,75;não"])
-
-    def test_only_the_chosen_formats(self) -> None:
-        data, _, _ = engine.export_reports("Exercise_1", ["20000001"], ["md"])
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            self.assertEqual(sorted(archive.namelist()),
-                             ["Exercise_1_20000001_Ana_Silva.md",
-                              "Exercise_1_notas.csv"])
 
 
 if __name__ == "__main__":

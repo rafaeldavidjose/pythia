@@ -158,10 +158,10 @@ class GradingApiTest(ServerTestCase):
         self.assertEqual(details["summary"]["grade"], 2.5)
 
         status, data, headers = self.request(
-            "/api/export?ex=Dobro&formats=md,pdf")
+            "/api/export?ex=Dobro")
         self.assertEqual((status, headers["X-Count"]), (200, "2"))
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            self.assertEqual(len(archive.namelist()), 5)
+            self.assertEqual(len(archive.namelist()), 3)
             self.assertIn("Dobro_notas.csv", archive.namelist())
 
     def test_upload_files(self) -> None:

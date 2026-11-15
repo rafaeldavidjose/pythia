@@ -191,8 +191,6 @@ label.check { display: inline-flex; gap: 6px; align-items: center; }
         <span id="countLabel" class="muted small"></span>
         <div class="progress" id="progressBar" hidden><div></div></div>
         <span class="grow"></span>
-        <label class="check small"><input type="checkbox" id="exportMd" checked> .md</label>
-        <label class="check small"><input type="checkbox" id="exportPdf" checked> .pdf</label>
         <button id="exportButton">Export reports</button>
       </div>
       <div class="list">
@@ -501,11 +499,14 @@ function toBase64(buffer) {
 }
 
 async function uploadFiles(items) {
-  items = items.filter(item => /\.(py|zip)$/i.test(item.path));
-  if (!items.length) return toast("No .py or .zip files found.");
+  if (!items.length) return toast("No files found.");
   if (!currentExercise) return toast("Choose an exercise first.");
-  const files = await Promise.all(items.map(async item =>
-    ({path: item.path, data: toBase64(await item.file.arrayBuffer())})));
+  // Other files are sent empty, only to see who handed in the wrong file
+  const files = await Promise.all(items.map(async item => ({
+    path: item.path,
+    data: /\.(py|zip)$/i.test(item.path)
+      ? toBase64(await item.file.arrayBuffer()) : "",
+  })));
   try {
     toast(importMessage(await api("/api/import_files", {ex: currentExercise, files})));
     await loadStudents();
@@ -776,8 +777,6 @@ function bindStudentPage() {
 /* Export */
 
 $("#exportButton").onclick = async () => {
-  const formats = [$("#exportMd").checked && "md", $("#exportPdf").checked && "pdf"].filter(Boolean);
-  if (!formats.length) return toast("Choose .md, .pdf or both.");
   const graded = students.filter(s => s.evaluated);
   if (!graded.length) return toast("No graded students yet.");
   let ids = graded.map(s => s.id);
@@ -785,7 +784,7 @@ $("#exportButton").onclick = async () => {
   const question = `${pending} students are not finalized. Export them too?\n\nCancel exports only the finalized ones.`;
   if (pending && !confirm(question)) ids = graded.filter(s => s.finalized).map(s => s.id);
   if (!ids.length) return toast("No finalized students.");
-  const query = `${exParam()}&formats=${formats.join(",")}&ids=${ids.map(encodeURIComponent).join(",")}`;
+  const query = `${exParam()}&ids=${ids.map(encodeURIComponent).join(",")}`;
   const response = await fetch("/api/export?" + query);
   if (!response.ok) return toast("Export failed.");
   const link = document.createElement("a");

@@ -13,7 +13,7 @@ You need Python 3.10 or newer. There is nothing to install.
 - `python pythia.py validate EXERCISE` checks `rules.json` and grades `solution.py` with it. The solution has to pass every test.
 - `python pythia.py import EXERCISE FOLDER` imports a folder of submissions.
 - `python pythia.py assess EXERCISE` grades the submissions not graded yet. `--regrade` grades again everyone not finalized, `--ids` picks students.
-- `python pythia.py report EXERCISE` prints the grades. `--export md,pdf,txt` writes the reports and `_notas.csv` to `data/<exercise>/reports`.
+- `python pythia.py report EXERCISE` prints the grades. `--export` writes a `.md` report per student and `_notas.csv` to `data/<exercise>/reports`.
 
 The web interface and the command line share the same `data/` folder, so you can import and grade in the terminal and review in the browser.
 
@@ -40,9 +40,9 @@ You get one of each case: a copy of the solution (20), a valid alternative imple
 4. Open each student. Every criterion lists its tests, numbered, with passed, failed or not run, and under each failed test what went wrong. You can change the grade and add a comment, which goes in the report.
 5. Click **Save** and tick **Finalized** when you are done with that student.
 6. **Copy report for Moodle** copies the plain-text report.
-7. **Export reports** writes a `.md` and/or `.pdf` per student and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
+7. **Export reports** writes a `.md` report per student and a `_notas.csv` with all the grades. You get a zip, and the files are also kept in `data/<exercise>/reports`.
 
-Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. The full name is matched against the roster by first and last name, ignoring "de", "da", "dos" and so on. The number in the file name does not matter. If it belongs to someone else, the student page shows a warning. "unknown" means no match, so fix the name or number on that page.
+Each Moodle folder (`Full Name_123456_assignsubmission_file`) is one student. A folder with no `.py` file, for example a file saved without the extension, still shows in the list: the student gets 0, every test shows as not run, and the student page lists the files that were handed in. The full name is matched against the roster by first and last name, ignoring "de", "da", "dos" and so on. The number in the file name does not matter. If it belongs to someone else, the student page shows a warning. "unknown" means no match, so fix the name or number on that page.
 
 **review** in the list means the file crashed or a test timed out, usually an infinite loop.
 
@@ -183,7 +183,7 @@ A test that never ran, for example after a syntax error, shows as `NÃO CORREU`.
 python -m unittest
 ```
 
-The tests use only the standard library. They cover every check, the rules file, importing, grading in a separate process (syntax errors, infinite loops, crashes), the reports and the PDF, the command line and the web API, and the example above. They also check the repo itself: no line of Python over 80 characters, no long dash anywhere, and every check, param and command documented in this README.
+The tests use only the standard library. They cover every check, the rules file, importing, grading in a separate process (syntax errors, infinite loops, crashes), the reports, the command line and the web API, and the example above. They also check the repo itself: no line of Python over 80 characters, no long dash anywhere, and every check, param and command documented in this README.
 
 ## Safety
 

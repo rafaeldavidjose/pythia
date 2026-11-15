@@ -24,7 +24,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 import rules
-import simple_pdf
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 EXERCISES_DIR = os.path.join(BASE, "exercises")
@@ -285,16 +284,18 @@ def _expand_zips(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
 def group_submissions(files: list[tuple[str, bytes]]) -> dict[str, dict]:
     """
     Group (path, bytes) pairs by student. Each student is a folder; loose
-    files count as one student each.
+    files count as one student each. A Moodle folder with no .py file is
+    still a student, with the names of what was handed in under "other".
     """
     files = [(path.replace("\\", "/").strip("/"), data)
              for path, data in files]
-    py_files = [
+    handed_in = [
         (path, data) for path, data in _expand_zips(files)
-        if path.lower().endswith(".py")
-        and "__MACOSX" not in path
+        if "__MACOSX" not in path
         and not os.path.basename(path).startswith(".")
     ]
+    py_files = [(path, data) for path, data in handed_in
+                if path.lower().endswith(".py")]
 
     # The common root is the folder that was chosen for import
     folders = [path.split("/")[:-1] for path, _ in py_files]
@@ -324,8 +325,21 @@ def group_submissions(files: list[tuple[str, bytes]]) -> dict[str, dict]:
         else:
             key = path
             folder = ""
-        group = groups.setdefault(key, {"folder": folder, "files": []})
+        group = groups.setdefault(key, {"folder": folder, "files": [],
+                                        "other": []})
         group["files"].append((os.path.basename(path), data))
+
+    for path, _ in handed_in:
+        if path.lower().endswith(".py"):
+            continue
+        parts = path.split("/")
+        for index, part in enumerate(parts[:-1]):
+            if MOODLE_FOLDER.match(part):
+                key = "/".join(parts[:index + 1])
+                group = groups.setdefault(key, {"folder": part, "files": [],
+                                                "other": []})
+                group["other"].append(os.path.basename(path))
+                break
     return groups
 
 
@@ -333,7 +347,7 @@ def identify(group: dict, students: list[dict]) -> dict:
     folder = group["folder"]
     filenames = [name for name, _ in group["files"]]
     number = None
-    for text in filenames + [folder]:
+    for text in filenames + group.get("other", []) + [folder]:
         match = STUDENT_NUMBER.search(text)
         if match:
             number = match.group(1)
@@ -388,14 +402,16 @@ def read_folder(path: str) -> list[tuple[str, bytes]]:
     files = []
     for folder, _, names in os.walk(path):
         for name in names:
-            if not name.lower().endswith((".py", ".zip")):
-                continue
             full_path = os.path.join(folder, name)
             relative = os.path.relpath(full_path, path).replace(os.sep, "/")
-            with open(full_path, "rb") as file:
-                files.append((root + "/" + relative, file.read()))
+            # Other files are only listed, to see who handed in the wrong file
+            data = b""
+            if name.lower().endswith((".py", ".zip")):
+                with open(full_path, "rb") as file:
+                    data = file.read()
+            files.append((root + "/" + relative, data))
     if not files:
-        raise ValueError("No .py or .zip files in " + path)
+        raise ValueError("No files in " + path)
     return files
 
 
@@ -406,6 +422,11 @@ def import_submissions(ex_id: str, files: list[tuple[str, bytes]]) -> dict:
         state = load_state(ex_id)
         for key, group in group_submissions(files).items():
             ident = identify(group, students)
+            if not group["files"]:
+                other = ", ".join(group.get("other", [])) or "none"
+                missing = f"No .py file was handed in. Files: {other}."
+                ident["warning"] = " ".join(
+                    text for text in (ident["warning"], missing) if text)
             student_id = ident["number"] or slug(
                 ident["name"] + "_" + key)[:60]
             names = _store_files(ex_id, student_id, group["files"])
@@ -821,12 +842,10 @@ def _grades_csv(state: dict, ids: list[str]) -> str:
     return "\n".join(rows) + "\n"
 
 
-def export_reports(
-    ex_id: str, ids: list[str], formats: list[str]
-) -> tuple[bytes, str, int]:
+def export_reports(ex_id: str, ids: list[str]) -> tuple[bytes, str, int]:
     """
-    Write reports (md, pdf and/or txt) to data/<exercise>/reports and
-    return them as a zip, with the folder and the number of students.
+    Write a .md report per student and the grades to data/<exercise>/reports
+    and return them as a zip, with the folder and the number of students.
     """
     ex = load_exercise(ex_id)
     state = load_state(ex_id)
@@ -838,14 +857,8 @@ def export_reports(
         record = state["students"].get(student_id)
         if not record or not record.get("evaluation"):
             continue
-        name = report_name(ex_id, record)
-        md = report_md(ex, record)
-        if "md" in formats:
-            outputs[name + ".md"] = md.encode("utf-8")
-        if "pdf" in formats:
-            outputs[name + ".pdf"] = simple_pdf.markdown_to_pdf(md)
-        if "txt" in formats:
-            outputs[name + ".txt"] = report_text(ex, record).encode("utf-8")
+        name = report_name(ex_id, record) + ".md"
+        outputs[name] = report_md(ex, record).encode("utf-8")
         exported.append(student_id)
     csv_name = ex_id + "_notas.csv"
     outputs[csv_name] = _grades_csv(state, exported).encode("utf-8-sig")

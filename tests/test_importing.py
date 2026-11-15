@@ -142,6 +142,20 @@ class GroupSubmissionsTest(unittest.TestCase):
         self.assertEqual([name for group in groups.values()
                           for name, _ in group["files"]], ["a.py"])
 
+    def test_moodle_folder_without_python_file(self) -> None:
+        groups = engine.group_submissions([
+            ("e/A_1_assignsubmission_file/FP_Avaliacao_1_20000001", b""),
+            ("e/B_2_assignsubmission_file/b.py", b"2"),
+            ("e/B_2_assignsubmission_file/notas.txt", b""),
+            ("e/leia-me.txt", b""),
+        ])
+        self.assertEqual(groups["e/A_1_assignsubmission_file"], {
+            "folder": "A_1_assignsubmission_file", "files": [],
+            "other": ["FP_Avaliacao_1_20000001"]})
+        self.assertEqual(groups["e/B_2_assignsubmission_file"]["other"],
+                         ["notas.txt"])
+        self.assertEqual(len(groups), 2)
+
     def test_windows_paths(self) -> None:
         groups = engine.group_submissions([
             ("e\\A_1_assignsubmission_file\\a.py", b"1"),
@@ -165,16 +179,19 @@ class ReadFolderTest(ProjectTestCase):
         self.write("entrega/A_1_assignsubmission_file/a.py", "x = 1")
         self.write("entrega/b.zip", zip_bytes({"b.py": "y = 2"}))
         self.write("entrega/leia-me.txt", "nada")
-        files = engine.read_folder(os.path.join(self.root, "entrega"))
-        self.assertEqual(sorted(path for path, _ in files),
+        files = dict(engine.read_folder(os.path.join(self.root, "entrega")))
+        self.assertEqual(sorted(files),
                          ["entrega/A_1_assignsubmission_file/a.py",
-                          "entrega/b.zip"])
+                          "entrega/b.zip", "entrega/leia-me.txt"])
+        self.assertEqual(files["entrega/A_1_assignsubmission_file/a.py"],
+                         b"x = 1")
+        self.assertEqual(files["entrega/leia-me.txt"], b"")
 
     def test_missing_or_empty_folder(self) -> None:
         with self.assertRaisesRegex(ValueError, "Folder not found"):
             engine.read_folder(os.path.join(self.root, "nada"))
-        self.write("vazia/leia-me.txt", "nada")
-        with self.assertRaisesRegex(ValueError, "No .py or .zip files"):
+        os.makedirs(os.path.join(self.root, "vazia"))
+        with self.assertRaisesRegex(ValueError, "No files in"):
             engine.read_folder(os.path.join(self.root, "vazia"))
 
 
@@ -205,6 +222,27 @@ class ImportSubmissionsTest(ProjectTestCase):
             engine.load_state("Dobro")["students"].values()))
         self.assertEqual(record["name"], "Zé Ninguém")
         self.assertTrue(record["id"].startswith("Ze_Ninguem"))
+
+    def test_student_without_python_file_gets_zero(self) -> None:
+        self.add_double_exercise()
+        self.write("entrega/Ana Silva_1_assignsubmission_file/Dobro_20000001",
+                   "print(1)")
+        self.write("entrega/Rui Sá_2_assignsubmission_file/main.py", "x = 1")
+        result = engine.import_submissions(
+            "Dobro", engine.read_folder(os.path.join(self.root, "entrega")))
+        self.assertEqual(result["added"], 2)
+        record = engine.load_state("Dobro")["students"]["20000001"]
+        self.assertIsNone(record["file"])
+        self.assertEqual(record["files"], [])
+        self.assertEqual(record["warning"], "No .py file was handed in. "
+                                            "Files: Dobro_20000001.")
+        engine.grade_students("Dobro", ["20000001"])
+        record = engine.load_state("Dobro")["students"]["20000001"]
+        self.assertEqual(engine.final_grade(record), 0)
+        self.assertTrue(engine.needs_review(record))
+        self.assertFalse(any(test["ran"]
+                             for criterion in record["evaluation"]["criteria"]
+                             for test in criterion["tests"]))
 
     def test_files_with_the_same_name_are_both_kept(self) -> None:
         student = "entrega/Ana Silva_1_assignsubmission_file"
