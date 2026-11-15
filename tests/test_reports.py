@@ -65,42 +65,41 @@ class ReportMarkdownTest(unittest.TestCase):
     def lines(self) -> list[str]:
         return self.report().splitlines()
 
-    def test_header_is_a_list_of_fields(self) -> None:
-        self.assertEqual(self.lines()[:10], [
+    def test_header_has_only_exercise_student_and_grade(self) -> None:
+        self.assertEqual(self.lines()[:6], [
             "# Relatório de avaliação", "",
             "- Exercício: Exercise_1",
-            "- Título: Gestão de notas",
-            "- Aluno: Ana Silva",
-            "- Número: 20000001",
-            "- Ficheiro: Exercise_1_20000001.py",
-            "- Data: 2026-11-14 10:00",
+            "- Aluno: Ana Silva (20000001)",
             "- Nota: 2,75 / 6",
-            "- Testes OK: 1 / 3",
+            "",
         ])
 
-    def test_summary_table(self) -> None:
+    def test_criterion_fields(self) -> None:
         lines = self.lines()
-        self.assertIn("| Critério | Pontos | Testes OK | Nota |", lines)
-        self.assertIn("| media | 4 | 1 / 2 | 2,75 |", lines)
-        self.assertIn("| Total | 6 | 1 / 3 | 2,75 |", lines)
+        self.assertIn("## media", lines)
+        self.assertIn("- Nota: 2,75 / 4", lines)
+        self.assertIn("- Testes OK: 1 / 2", lines)
 
-    def test_every_test_is_a_row_with_its_result(self) -> None:
+    def test_every_test_is_listed_with_its_result(self) -> None:
         lines = self.lines()
-        self.assertIn("| N.º | Teste | Peso | Resultado |", lines)
-        self.assertIn("| 1 | mostrar('Ana', 15) | 1 | FALHOU |", lines)
-        self.assertIn("| 1 | media([10]) | 1 | OK |", lines)
-        self.assertIn("| 2 | media([]) | 1 | FALHOU |", lines)
+        self.assertIn("  - `mostrar('Ana', 15)`: FALHOU", lines)
+        self.assertIn("  - `media([10])`: OK", lines)
+        self.assertIn("  - `media([])`: FALHOU", lines)
 
-    def test_failures_point_at_the_test_number(self) -> None:
-        lines = self.lines()
-        self.assertIn("- Teste 2: erro ZeroDivisionError: division by zero "
-                      "(linha 2)", lines)
-        self.assertIn("  - Sugestão: Uma lista vazia tem média 0.", lines)
+    def test_failure_details_go_under_the_test(self) -> None:
+        report = self.report()
+        self.assertIn("  - `media([])`: FALHOU\n"
+                      "    - erro ZeroDivisionError: division by zero "
+                      "(linha 2)\n"
+                      "    - Sugestão: Uma lista vazia tem média 0.\n",
+                      report)
 
     def test_expected_and_obtained_output(self) -> None:
         report = self.report()
-        self.assertIn("  - Esperado:\n    ```\n    Ana: 15\n    ```", report)
-        self.assertIn("  - Obtido:\n    ```\n    Ana 15\n    ```", report)
+        self.assertIn("    - Esperado:\n      ```\n      Ana: 15\n      ```",
+                      report)
+        self.assertIn("    - Obtido:\n      ```\n      Ana 15\n      ```",
+                      report)
 
     def test_hint_comment_and_notes(self) -> None:
         lines = self.lines()
@@ -122,24 +121,21 @@ class ReportMarkdownTest(unittest.TestCase):
         test.update(ok=False, ran=False)
         lines = self.lines()
         self.assertIn("- Erro: SyntaxError: invalid syntax (linha 3)", lines)
-        self.assertIn("| 1 | media([10]) | 1 | NÃO CORREU |", lines)
+        self.assertIn("  - `media([10])`: NÃO CORREU", lines)
 
-    def test_weights_and_pipes_in_labels(self) -> None:
+    def test_weight_is_shown_when_it_is_not_one(self) -> None:
         test = self.record["evaluation"]["criteria"][1]["tests"][0]
-        test.update(label="f('a|b')", weight=0.5)
-        self.assertIn("| 1 | f('a/b') | 0,5 | OK |", self.lines())
+        test["weight"] = 0.5
+        self.assertIn("  - `media([10])`: OK (peso 0,5)", self.lines())
 
-    def test_without_number_file_or_date(self) -> None:
-        self.record.update(number="", file=None)
-        del self.record["evaluation"]["date"]
-        lines = self.lines()
-        self.assertIn("- Ficheiro: (nenhum)", lines)
-        self.assertFalse(any(line.startswith(("- Número", "- Data"))
-                             for line in lines))
+    def test_student_without_number(self) -> None:
+        self.record["number"] = ""
+        self.assertIn("- Aluno: Ana Silva", self.lines())
 
-    def test_no_prose_or_decoration(self) -> None:
+    def test_no_date_tables_or_prose(self) -> None:
         report = self.report()
-        for text in ("automaticamente", "**", chr(0xB7), chr(0x2014)):
+        for text in ("Data:", "Ficheiro:", "|", "automaticamente", "**",
+                     chr(0xB7), chr(0x2014)):
             self.assertNotIn(text, report)
 
 
@@ -148,18 +144,17 @@ class ReportTextTest(unittest.TestCase):
         self.text = engine.report_text(EXERCISE, sample_record())
 
     def test_no_markdown(self) -> None:
-        for markup in ("```", "|", "# "):
+        for markup in ("```", "`", "# "):
             self.assertNotIn(markup, self.text)
         self.assertTrue(self.text.startswith("Relatório de avaliação\n"))
 
-    def test_tables_become_aligned_columns(self) -> None:
+    def test_same_lines_without_marks(self) -> None:
         lines = self.text.splitlines()
-        self.assertIn("Critério  Pontos  Testes OK  Nota", lines)
-        self.assertIn("media     4       1 / 2      2,75", lines)
-        self.assertIn("2    media([])    1     FALHOU", lines)
+        self.assertIn("  - media([]): FALHOU", lines)
+        self.assertIn("media", lines)
 
     def test_output_blocks_keep_their_lines(self) -> None:
-        self.assertIn("  - Obtido:\n    Ana 15\n\nmedia\n", self.text)
+        self.assertIn("    - Obtido:\n      Ana 15\n", self.text)
 
 
 class ExportTest(ProjectTestCase):

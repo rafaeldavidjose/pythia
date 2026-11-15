@@ -716,16 +716,12 @@ def needs_review(record: dict) -> bool:
                for failure in test["failures"])
 
 
-# Reports (Portuguese, for students)
+# Reports (Portuguese, for students), shaped like an egrader report
 STATUS = {"ok": "OK", "failed": "FALHOU", "not_run": "NÃO CORREU"}
 
 
 def _fraction(value: float | None, total: float) -> str:
     return f"{grade_text(value)} / {grade_text(total)}"
-
-
-def _cell(text: Any) -> str:
-    return str(text).replace("|", "/")
 
 
 def _status(test: dict) -> str:
@@ -735,20 +731,23 @@ def _status(test: dict) -> str:
 
 
 def _output_lines(title: str, text: str) -> list[str]:
-    lines = [f"  - {title}:", "    ```"]
-    lines += [f"    {line}" for line in text.splitlines()]
-    return lines + ["    ```"]
+    lines = [f"    - {title}:", "      ```"]
+    lines += [f"      {line}" for line in text.splitlines()]
+    return lines + ["      ```"]
 
 
-def _failure_lines(number: int, test: dict) -> list[str]:
-    lines = []
+def _test_lines(test: dict) -> list[str]:
+    line = f"  - `{test['label']}`: {_status(test)}"
+    if test.get("weight", 1) != 1:
+        line += f" (peso {grade_text(test['weight'])})"
+    lines = [line]
     for failure in test["failures"]:
-        lines.append(f"- Teste {number}: {failure['message']}")
+        lines.append(f"    - {failure['message']}")
         if "expected_output" in failure:
             lines += _output_lines("Esperado", failure["expected_output"])
             lines += _output_lines("Obtido", failure["actual_output"])
     if test.get("hint"):
-        lines.append(f"  - Sugestão: {test['hint']}")
+        lines.append(f"    - Sugestão: {test['hint']}")
     return lines
 
 
@@ -757,60 +756,34 @@ def _criterion_lines(record: dict, criterion: dict) -> list[str]:
     lines = [f"## {criterion['name']}", "",
              f"- Nota: {_fraction(grade, criterion['points'])}",
              f"- Testes OK: {criterion['passed']} / {criterion['total']}"]
+    tests = criterion.get("tests", [])
+    if tests:
+        lines.append("- Testes:")
+        for test in tests:
+            lines += _test_lines(test)
     if criterion.get("hint"):
         lines.append(f"- Sugestão: {criterion['hint']}")
     comment = (record.get("comments", {}).get(criterion["name"]) or "")
     if comment.strip():
         lines.append(f"- Comentário: {comment.strip()}")
-    tests = criterion.get("tests", [])
-    if tests:
-        lines += ["", "| N.º | Teste | Peso | Resultado |",
-                  "|---|---|---|---|"]
-        for number, test in enumerate(tests, 1):
-            weight = grade_text(test.get("weight", 1))
-            lines.append(f"| {number} | {_cell(test['label'])} | {weight} "
-                         f"| {_status(test)} |")
-    failures = []
-    for number, test in enumerate(tests, 1):
-        failures += _failure_lines(number, test)
-    if failures:
-        lines += ["", "Falhas:", ""] + failures
     return lines + [""]
 
 
 def report_md(ex: dict, record: dict) -> str:
-    """The report a student gets, laid out like the output of a tool."""
     evaluation = record["evaluation"]
     criteria = evaluation["criteria"]
     total = sum(criterion["points"] for criterion in criteria)
-    passed = sum(criterion["passed"] for criterion in criteria)
-    tests = sum(criterion["total"] for criterion in criteria)
+    student = record["name"]
+    if record["number"]:
+        student += f" ({record['number']})"
 
     lines = ["# Relatório de avaliação", "",
              f"- Exercício: {ex['id']}",
-             f"- Título: {ex['title']}",
-             f"- Aluno: {record['name']}"]
-    if record["number"]:
-        lines.append(f"- Número: {record['number']}")
-    lines.append(f"- Ficheiro: {record.get('file') or '(nenhum)'}")
-    if evaluation.get("date"):
-        lines.append(f"- Data: {evaluation['date']}")
-    lines += [f"- Nota: {_fraction(final_grade(record), total)}",
-              f"- Testes OK: {passed} / {tests}"]
+             f"- Aluno: {student}",
+             f"- Nota: {_fraction(final_grade(record), total)}"]
     if evaluation["load"].get("error"):
         lines.append(f"- Erro: {evaluation['load']['error']}")
-
-    lines += ["", "## Critérios", "",
-              "| Critério | Pontos | Testes OK | Nota |", "|---|---|---|---|"]
-    for criterion in criteria:
-        lines.append(
-            f"| {_cell(criterion['name'])} "
-            f"| {grade_text(criterion['points'])} "
-            f"| {criterion['passed']} / {criterion['total']} "
-            f"| {grade_text(criterion_grade(record, criterion))} |")
-    lines += [f"| Total | {grade_text(total)} | {passed} / {tests} "
-              f"| {grade_text(final_grade(record))} |", ""]
-
+    lines.append("")
     for criterion in criteria:
         lines += _criterion_lines(record, criterion)
     notes = (record.get("notes") or "").strip()
@@ -819,32 +792,13 @@ def report_md(ex: dict, record: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _aligned_table(rows: list[str]) -> list[str]:
-    cells = [[cell.strip() for cell in row.strip().strip("|").split("|")]
-             for row in rows if not re.match(r"^\|[-| ]+\|$", row)]
-    widths = [max(len(row[column]) for row in cells)
-              for column in range(len(cells[0]))]
-    return ["  ".join(cell.ljust(width)
-                      for cell, width in zip(row, widths)).rstrip()
-            for row in cells]
-
-
 def report_text(ex: dict, record: dict) -> str:
     """Plain-text version of the report, to paste into Moodle."""
     lines = []
-    table = []
     for line in report_md(ex, record).splitlines():
-        if line.startswith("|"):
-            table.append(line)
-            continue
-        if table:
-            lines += _aligned_table(table)
-            table = []
         if line.strip() == "```":
             continue
-        lines.append(re.sub(r"^#+ ", "", line))
-    if table:
-        lines += _aligned_table(table)
+        lines.append(re.sub(r"^#+ ", "", line).replace("`", ""))
     return "\n".join(lines).rstrip() + "\n"
 
 
