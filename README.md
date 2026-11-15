@@ -164,11 +164,11 @@ Reports follow the shape of an egrader report: nested lists of `key: value`, wit
   - `classificar(15)`: OK
   - `classificar(10)`: FALHOU
     - esperado 'Aprovado', obtido 'Reprovado'
-    - Sugestão: 10 já é aprovado (>= 10).
+    - Explicação: 10 já é aprovado (>= 10).
   - `classificar(9.5)`: OK
   - `classificar(-1)`: FALHOU
     - esperado 'Inválida', obtido 'Reprovado'
-    - Sugestão: Fora de [0, 20] é inválida.
+    - Explicação: Fora de [0, 20] é inválida.
   - `classificar(21)`: FALHOU
     - esperado 'Inválida', obtido 'Aprovado'
 ```

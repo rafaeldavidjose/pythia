@@ -91,7 +91,7 @@ class ReportMarkdownTest(unittest.TestCase):
         self.assertIn("  - `media([])`: FALHOU\n"
                       "    - erro ZeroDivisionError: division by zero "
                       "(linha 2)\n"
-                      "    - Sugestão: Uma lista vazia tem média 0.\n",
+                      "    - Explicação: Uma lista vazia tem média 0.\n",
                       report)
 
     def test_expected_and_obtained_output(self) -> None:
@@ -103,7 +103,7 @@ class ReportMarkdownTest(unittest.TestCase):
 
     def test_hint_comment_and_notes(self) -> None:
         lines = self.lines()
-        self.assertIn("- Sugestão: Siga o formato do enunciado.", lines)
+        self.assertIn("- Explicação: Siga o formato do enunciado.", lines)
         self.assertIn("- Comentário: Falta o caso da lista vazia.", lines)
         self.assertIn("## Observações", lines)
         self.assertIn("Entregue fora do prazo.", lines)

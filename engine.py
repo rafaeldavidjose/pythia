@@ -747,7 +747,7 @@ def _test_lines(test: dict) -> list[str]:
             lines += _output_lines("Esperado", failure["expected_output"])
             lines += _output_lines("Obtido", failure["actual_output"])
     if test.get("hint"):
-        lines.append(f"    - Sugestão: {test['hint']}")
+        lines.append(f"    - Explicação: {test['hint']}")
     return lines
 
 
@@ -762,7 +762,7 @@ def _criterion_lines(record: dict, criterion: dict) -> list[str]:
         for test in tests:
             lines += _test_lines(test)
     if criterion.get("hint"):
-        lines.append(f"- Sugestão: {criterion['hint']}")
+        lines.append(f"- Explicação: {criterion['hint']}")
     comment = (record.get("comments", {}).get(criterion["name"]) or "")
     if comment.strip():
         lines.append(f"- Comentário: {comment.strip()}")

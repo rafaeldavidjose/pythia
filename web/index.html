@@ -583,14 +583,14 @@ function renderTest(test, index) {
   const [pillClass, status] = test.ok ? ["p-ok", "passed"]
     : test.ran ? ["p-bad", "failed"] : ["p-warn", "not run"];
   const details = test.failures.map(renderFailure).join("")
-    + (test.hint ? `<div class="hint">Sugestão: ${esc(test.hint)}</div>` : "");
+    + (test.hint ? `<div class="hint">Explicação: ${esc(test.hint)}</div>` : "");
   return `<li><span class="pill ${pillClass}">${status}</span> Test ${index + 1}: ${esc(test.label)}
     ${details ? `<div class="details">${details}</div>` : ""}</li>`;
 }
 
 function renderTests(c) {
   const tests = c.tests || [];
-  const hint = c.hint ? `<div class="hint">Sugestão: ${esc(c.hint)}</div>` : "";
+  const hint = c.hint ? `<div class="hint">Explicação: ${esc(c.hint)}</div>` : "";
   return `<ul class="tests">${tests.map(renderTest).join("")}</ul>${hint}`;
 }
 
