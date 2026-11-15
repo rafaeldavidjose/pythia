@@ -85,8 +85,7 @@ def _tests(record: dict) -> str:
 def command_report(args: argparse.Namespace) -> int:
     engine.exercise_folder(args.exercise)
     records = sorted(engine.load_state(args.exercise)["students"].values(),
-                     key=lambda record: (record.get("class", ""),
-                                         record["name"]))
+                     key=engine.name_order)
     if args.export:
         ids = [record["id"] for record in records if record.get("evaluation")]
         _, folder, count = engine.export_reports(args.exercise, ids)

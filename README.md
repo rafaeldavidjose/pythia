@@ -17,7 +17,7 @@ You need Python 3.10 or newer. There is nothing to install.
 
 The web interface and the command line share the same `data/` folder, so you can import and grade in the terminal and review in the browser.
 
-Copy `students.example.csv` to `students.csv` and put your roster in it (`number;name;class`). `students.csv`, `data/` and `submissions/` are git-ignored.
+Copy `students.example.csv` to `students.csv` and put your roster in it (`number;name`). Students are listed in alphabetical order. `students.csv`, `data/` and `submissions/` are git-ignored.
 
 ## Try the example
 

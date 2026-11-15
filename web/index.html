@@ -195,7 +195,7 @@ label.check { display: inline-flex; gap: 6px; align-items: center; }
       </div>
       <div class="list">
         <table>
-          <thead><tr><th>No.</th><th>Name</th><th>Class</th><th>Grade</th><th>Status</th></tr></thead>
+          <thead><tr><th>No.</th><th>Name</th><th>Grade</th><th>Status</th></tr></thead>
           <tbody id="studentRows"></tbody>
         </table>
         <div id="noStudents" class="empty" hidden>No submissions yet. Import the student folders to start.</div>
@@ -411,7 +411,6 @@ async function loadStudents() {
         ${s.ai_trap ? '<span class="pill p-bad" title="The code contains the AI trap word. Grade unchanged.">possible AI</span>' : ""}
         <div class="muted small">${esc(s.file || "no .py file")}</div>
       </td>
-      <td class="num">${esc(s.class)}</td>
       <td class="num"><b>${grade(s.grade)}</b></td>
       <td>${statusPill(s)}</td>
     </tr>`).join("");
@@ -637,7 +636,6 @@ function renderStudent() {
       <div class="fields">
         <label class="muted small">Name <input type="text" id="nameInput" value="${esc(s.name)}" size="22"></label>
         <label class="muted small">Number <input type="text" id="numberInput" value="${esc(s.number)}" size="10"></label>
-        <label class="muted small">Class <input type="text" id="classInput" value="${esc(s.class)}" size="2"></label>
       </div>
       <div class="fields small muted"><span>Folder: ${esc(s.source)}</span>${fileField}</div>
     </div>
@@ -706,7 +704,7 @@ function updateTotal() {
 async function save() {
   const body = {
     ex: currentExercise, id: currentStudent,
-    name: $("#nameInput").value, number: $("#numberInput").value, class: $("#classInput").value,
+    name: $("#nameInput").value, number: $("#numberInput").value,
   };
   if (pageData.evaluation) {
     Object.assign(body, collectGrades());

@@ -75,7 +75,7 @@ def grade_text(value: float | None) -> str:
     return text.replace(".", ",")
 
 
-# Student list (students.csv: number;name;class)
+# Student list (students.csv: number;name, other columns are ignored)
 def load_students() -> list[dict]:
     if not os.path.exists(STUDENTS_FILE):
         return []
@@ -88,11 +88,13 @@ def load_students() -> list[dict]:
         number = re.sub(r"\D", "", row[0])
         if not number:
             continue
-        class_name = row[2].strip() if len(row) > 2 else ""
-        students.append(
-            {"number": number, "name": row[1].strip(), "class": class_name}
-        )
+        students.append({"number": number, "name": row[1].strip()})
     return students
+
+
+def name_order(record: dict) -> str:
+    """Sort key: the name in alphabetical order, ignoring accents."""
+    return strip_accents(record["name"]).lower()
 
 
 NAME_PARTICLES = {"de", "da", "do", "das", "dos", "e"}
@@ -371,7 +373,6 @@ def identify(group: dict, students: list[dict]) -> dict:
     return {
         "number": number or "",
         "name": name or "(no name)",
-        "class": match["class"] if match else "",
         "recognized": match is not None,
         "warning": warning,
     }
@@ -829,15 +830,13 @@ def report_name(ex_id: str, record: dict) -> str:
 
 
 def _grades_csv(state: dict, ids: list[str]) -> str:
-    rows = ["Número;Nome;Turma;Nota;Finalizado"]
-    records = sorted(state["students"].values(),
-                     key=lambda record: record["name"])
+    rows = ["Número;Nome;Nota;Finalizado"]
+    records = sorted(state["students"].values(), key=name_order)
     for record in records:
         if record["id"] not in ids:
             continue
         finalized = "sim" if record.get("finalized") else "não"
         rows.append(";".join([record["number"], record["name"],
-                              record.get("class", ""),
                               grade_text(final_grade(record)), finalized]))
     return "\n".join(rows) + "\n"
 

@@ -9,9 +9,9 @@ import engine
 from tests.helpers import EXAMPLE_SUBMISSIONS, ProjectTestCase
 
 STUDENTS = [
-    {"number": "20000001", "name": "Ana Silva", "class": "1"},
-    {"number": "20000002", "name": "Ana Costa", "class": "1"},
-    {"number": "20000003", "name": "Rui Sá", "class": "2"},
+    {"number": "20000001", "name": "Ana Silva"},
+    {"number": "20000002", "name": "Ana Costa"},
+    {"number": "20000003", "name": "Rui Sá"},
 ]
 
 
@@ -28,7 +28,7 @@ class RosterTest(ProjectTestCase):
         students = engine.load_students()
         self.assertEqual(len(students), 5)
         self.assertEqual(students[0], {"number": "20000001",
-                                       "name": "Ana Silva", "class": "1"})
+                                       "name": "Ana Silva"})
 
     def test_comma_separated_rows_and_missing_parts(self) -> None:
         self.write("students.csv", "number,name,class\n"
@@ -37,9 +37,16 @@ class RosterTest(ProjectTestCase):
                                    "\n"
                                    "20000010,Ivo Reis,2\n")
         self.assertEqual(engine.load_students(), [
-            {"number": "20000009", "name": "Rui Sá", "class": ""},
-            {"number": "20000010", "name": "Ivo Reis", "class": "2"},
+            {"number": "20000009", "name": "Rui Sá"},
+            {"number": "20000010", "name": "Ivo Reis"},
         ])
+
+    def test_alphabetical_order_ignores_accents_and_case(self) -> None:
+        records = [{"name": "Zé Lopes"}, {"name": "bruno Reis"},
+                   {"name": "Álvaro Dias"}]
+        self.assertEqual([record["name"]
+                          for record in sorted(records, key=engine.name_order)],
+                         ["Álvaro Dias", "bruno Reis", "Zé Lopes"])
 
     def test_no_roster(self) -> None:
         os.remove(self.students_file)
@@ -61,7 +68,7 @@ class FindStudentTest(unittest.TestCase):
 
     def test_no_match_or_ambiguous(self) -> None:
         self.assertIsNone(engine.find_student(STUDENTS, None, "Eva Rocha"))
-        twins = STUDENTS + [{"number": "9", "name": "Ana Silva", "class": ""}]
+        twins = STUDENTS + [{"number": "9", "name": "Ana Silva"}]
         self.assertIsNone(engine.find_student(twins, None, "Ana Silva"))
         self.assertIsNone(engine.find_student(STUDENTS, None, ""))
 
@@ -87,7 +94,7 @@ class IdentifyTest(unittest.TestCase):
         group = {"folder": "", "files": [("FP_Dobro_20000003.py", b"")]}
         ident = engine.identify(group, STUDENTS)
         self.assertEqual(ident["name"], "Rui Sá")
-        self.assertEqual(ident["class"], "2")
+        self.assertTrue(ident["recognized"])
 
 
 class GroupSubmissionsTest(unittest.TestCase):

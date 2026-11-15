@@ -55,7 +55,6 @@ def summary(record: dict) -> dict:
         "id": record["id"],
         "number": record["number"],
         "name": record["name"],
-        "class": record.get("class", ""),
         "recognized": record.get("recognized", False),
         "warning": record.get("warning", ""),
         "source": record.get("source", ""),
@@ -98,7 +97,7 @@ def save_student(changes: dict) -> dict:
         for key in ("notes", "finalized"):
             if key in changes:
                 record[key] = changes[key]
-        for key in ("name", "number", "class"):
+        for key in ("name", "number"):
             if key in changes:
                 record[key] = changes[key].strip()
         if changes.get("file") in record.get("files", []):
@@ -170,10 +169,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(engine.validate_exercise(query["ex"]))
         elif path == "/api/students":
             records = engine.load_state(query["ex"])["students"].values()
-            rows = sorted(
-                (summary(record) for record in records),
-                key=lambda row: (row["class"],
-                                 engine.strip_accents(row["name"]).lower()))
+            rows = sorted((summary(record) for record in records),
+                          key=engine.name_order)
             self.send({"students": rows, "progress": _jobs.get(query["ex"])})
         elif path == "/api/student":
             self.send(student_details(query["ex"], query["id"]))

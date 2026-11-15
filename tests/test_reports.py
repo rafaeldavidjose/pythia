@@ -35,7 +35,7 @@ def sample_record() -> dict:
     evaluation = {"load": {"ok": True, "error": None}, "criteria": criteria,
                   "ai_trap": [], "date": "2026-11-14 10:00"}
     return {"id": "20000001", "number": "20000001", "name": "Ana Silva",
-            "class": "1", "file": "Exercise_1_20000001.py",
+            "file": "Exercise_1_20000001.py",
             "evaluation": evaluation, "grades": {"mostrar": 0, "media": 2.75},
             "comments": {"media": "Falta o caso da lista vazia."},
             "notes": "Entregue fora do prazo.", "finalized": False}
@@ -180,8 +180,8 @@ class ExportTest(ProjectTestCase):
         self.assertEqual(sorted(os.listdir(folder)), names)
         self.assertTrue(report.startswith("# Relatório de avaliação"))
         self.assertEqual(grades.splitlines(),
-                         ["Número;Nome;Turma;Nota;Finalizado",
-                          "20000001;Ana Silva;1;2,75;não"])
+                         ["Número;Nome;Nota;Finalizado",
+                          "20000001;Ana Silva;2,75;não"])
 
 
 if __name__ == "__main__":
