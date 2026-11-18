@@ -137,6 +137,8 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 
 Tuples and lists count as equal, numbers are compared to 6 decimal places, and output ignores case, accents and extra spaces, so a valid alternative solution is not penalised. `exit()` at the end of a program is fine.
 
+Sets are compared as sets, so the order does not matter, but a list does not count as a set. Reports write sets in sorted order.
+
 Without `solution.py` every `returns` and `mutates` test needs an `expected`, and so does `prints` unless it only looks for phrases.
 
 ### Adding a check
