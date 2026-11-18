@@ -72,8 +72,23 @@ def same(left: Any, right: Any) -> bool:
         return False
 
 
+def text_of(value: Any) -> str:
+    """repr, with sets in sorted order so reports do not change between runs."""
+    if isinstance(value, (set, frozenset)):
+        if not value:
+            return "set()"
+        return "{" + ", ".join(sorted(text_of(item) for item in value)) + "}"
+    if isinstance(value, dict):
+        items = (f"{text_of(key)}: {text_of(item)}"
+                 for key, item in value.items())
+        return "{" + ", ".join(items) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(text_of(item) for item in value) + "]"
+    return repr(value)
+
+
 def show(value: Any) -> str:
-    text = repr(value)
+    text = text_of(value)
     return text if len(text) <= 120 else text[:117] + "..."
 
 
@@ -101,12 +116,15 @@ def differences(actual: Any, expected: Any, name: str) -> str:
 
 
 def decode(value: Any) -> Any:
-    """Turn {"$tuple": [...]} from JSON into a real tuple, at any depth."""
+    """Turn {"$tuple": [...]} and {"$set": [...]} from JSON into a tuple or a
+    set, at any depth."""
     if isinstance(value, list):
         return [decode(item) for item in value]
     if isinstance(value, dict):
         if set(value) == {"$tuple"}:
             return tuple(decode(item) for item in value["$tuple"])
+        if set(value) == {"$set"}:
+            return {decode(item) for item in value["$set"]}
         return {key: decode(item) for key, item in value.items()}
     return value
 
@@ -361,11 +379,11 @@ def needs_solution(name: str, params: dict) -> bool:
 
 def fits_in_label(value: Any) -> bool:
     """Short enough to be written out in a report label."""
-    return len(repr(value)) <= 40
+    return len(text_of(value)) <= 40
 
 
 def _show_argument(value: Any) -> str:
-    return repr(value) if fits_in_label(value) else "[...]"
+    return text_of(value) if fits_in_label(value) else "[...]"
 
 
 def default_label(name: str, params: dict) -> str:

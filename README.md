@@ -123,7 +123,7 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 | Param | Meaning |
 |---|---|
 | `function` | Name of the function. Required where it appears. |
-| `args` | List of arguments. JSON has no tuples, so write one as `{"$tuple": [0, 0]}`. |
+| `args` | List of arguments. JSON has no tuples or sets, so write them as `{"$tuple": [0, 0]}` and `{"$set": ["vila", "floresta"]}`. |
 | `expected` | The right answer. Without it, the check runs `solution.py` with the same arguments and uses its answer. For `prints` it is the whole output. |
 | `inputs` | Answers given to `input()`, in order. |
 | `names` | Names for list arguments in the report, like `{"0": "mapa"}`, so a big grid shows as `mapa`. An argument from `values` that is too long to write out already gets its name. |

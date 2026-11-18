@@ -338,6 +338,15 @@ class ComparisonTest(unittest.TestCase):
         mixed = {"$tuple": [1], "x": 2}
         self.assertEqual(checks.decode(mixed), mixed)
 
+    def test_decode_turns_markers_into_sets(self) -> None:
+        self.assertEqual(checks.decode({"v": {"$set": ["a", "b", "a"]}}),
+                         {"v": {"a", "b"}})
+
+    def test_sets_are_shown_sorted(self) -> None:
+        self.assertEqual(checks.show({"b", "a"}), "{'a', 'b'}")
+        self.assertEqual(checks.show(set()), "set()")
+        self.assertEqual(checks.show({"x": {2, 1}}), "{'x': {1, 2}}")
+
 
 class CheckInfoTest(unittest.TestCase):
     def test_available_checks(self) -> None:
