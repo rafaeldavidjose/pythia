@@ -287,6 +287,22 @@ class ProgramTest(CheckTestCase):
         self.assertEqual(lines[10], "... (60 linhas) ...")
         self.assertEqual(lines[-1], "99")
 
+    def test_phrases_ignore_spaces_and_punctuation(self) -> None:
+        source = ("print('Flecha :2.')\nprint('Nao tens esse item')\n"
+                  "input()\n")
+        self.assertEqual(self.check("program", source, inputs=["x"],
+                                    contains=["flecha: 2",
+                                              "Não tens esse item!"]), [])
+        self.assertEqual(self.messages("program", source, inputs=["x"],
+                                       contains=["flecha: 3"])[1],
+                         'o output não contém "flecha: 3"')
+
+    def test_phrase_must_be_on_one_line(self) -> None:
+        source = "print('flecha:')\nprint('2')\n"
+        self.assertEqual(self.messages("program", source,
+                                       contains=["flecha: 2"])[1:],
+                         ['o output não contém "flecha: 2"'])
+
     def test_must_finish(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION),
                          ["input: (nenhum)",

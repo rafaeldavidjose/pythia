@@ -150,14 +150,30 @@ def _clip(text: str, head: int = 10, tail: int = 30) -> str:
                      + lines[-tail:])
 
 
+SENTENCE_MARKS = ".,;:!?"
+
+
+def _loose(text: str) -> str:
+    """Normalized text without spaces or sentence punctuation."""
+    return "".join(char for char in normalize(text)
+                   if not char.isspace() and char not in SENTENCE_MARKS)
+
+
+def _has_phrase(output: str, phrase: str) -> bool:
+    """A phrase is found on one line, whatever the spaces and punctuation,
+    so "flecha:2" or "Flecha : 2." count as "flecha: 2"."""
+    wanted = _loose(phrase)
+    return any(wanted in _loose(line) for line in output.splitlines())
+
+
 def _phrase_failures(output: str, contains: list | tuple,
                      excludes: list | tuple) -> list[dict]:
     failures = []
     for phrase in contains:
-        if normalize(phrase) not in normalize(output):
+        if not _has_phrase(output, phrase):
             failures.append(_failure(f'o output não contém "{phrase}"'))
     for phrase in excludes:
-        if normalize(phrase) in normalize(output):
+        if _has_phrase(output, phrase):
             failures.append(_failure(f'o output contém "{phrase}" (não devia)'))
     return failures
 
