@@ -135,8 +135,19 @@ def _failure(message: str, expected_output: str | None = None,
     failure = {"message": message}
     if expected_output is not None:
         failure["expected_output"] = expected_output
+    if actual_output is not None:
         failure["actual_output"] = actual_output
     return failure
+
+
+def _clip(text: str, head: int = 10, tail: int = 30) -> str:
+    """Keep the start and the end of a long output."""
+    lines = text.rstrip().splitlines()
+    if len(lines) <= head + tail + 1:
+        return "\n".join(lines) or "(sem saída)"
+    skipped = len(lines) - head - tail
+    return "\n".join(lines[:head] + [f"... ({skipped} linhas) ..."]
+                     + lines[-tail:])
 
 
 def _phrase_failures(output: str, contains: list | tuple,
@@ -314,7 +325,14 @@ def check_program(
     if must_finish and outcome.asked_more:
         failures.append(_failure("o programa não terminou "
                                  "(pediu mais entradas)"))
-    return failures + _phrase_failures(outcome.output, contains, excludes)
+    failures += _phrase_failures(outcome.output, contains, excludes)
+    if failures:
+        failures[-1]["actual_output"] = _clip(outcome.transcript())
+        if solution.code is not None:
+            reference = run(lambda: exec(solution.code,
+                                         new_namespace(solution.path)), inputs)
+            failures[-1]["expected_output"] = _clip(reference.transcript())
+    return failures
 
 
 def check_defines(

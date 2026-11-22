@@ -574,8 +574,10 @@ function criterionClass(c, value) {
 }
 
 function renderFailure(failure) {
-  const output = failure.expected_output === undefined ? ""
-    : `<pre>Expected:\n${esc(failure.expected_output)}\n\nGot:\n${esc(failure.actual_output)}</pre>`;
+  const parts = [];
+  if (failure.expected_output !== undefined) parts.push(`Expected:\n${esc(failure.expected_output)}`);
+  if (failure.actual_output !== undefined) parts.push(`Got:\n${esc(failure.actual_output)}`);
+  const output = parts.length ? `<pre>${parts.join("\n\n")}</pre>` : "";
   return `<div>${esc(failure.message)}</div>${output}`;
 }
 

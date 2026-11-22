@@ -7,7 +7,7 @@ the line in the student's file.
 import builtins
 import io
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import CodeType
 from typing import Any, Callable
 
@@ -47,6 +47,17 @@ class Outcome:
     output: str
     error: BaseException | None
     asked_more: bool
+    answers: list = field(default_factory=list)
+
+    def transcript(self) -> str:
+        """The output with each answer to input() written after its prompt,
+        as it looks in a terminal."""
+        text, start = [], 0
+        for position, answer in self.answers:
+            text += [self.output[start:position], answer]
+            start = position
+        text.append(self.output[start:])
+        return "".join(text)
 
 
 def run(func: Callable[[], Any], inputs: list | tuple) -> Outcome:
@@ -54,6 +65,7 @@ def run(func: Callable[[], Any], inputs: list | tuple) -> Outcome:
     queue = [str(answer) for answer in inputs]
     output = _LimitedOutput()
     asked_more = False
+    answers: list = []
 
     def fake_input(prompt: object = "") -> str:
         nonlocal asked_more
@@ -61,6 +73,7 @@ def run(func: Callable[[], Any], inputs: list | tuple) -> Outcome:
         if not queue:
             asked_more = True
             raise OutOfInputs()
+        answers.append((output.tell(), queue[0]))
         output.write("\n")
         return queue.pop(0)
 
@@ -82,7 +95,7 @@ def run(func: Callable[[], Any], inputs: list | tuple) -> Outcome:
         error = caught
     finally:
         builtins.input, sys.stdout = real_input, real_stdout
-    return Outcome(returned, output.getvalue(), error, asked_more)
+    return Outcome(returned, output.getvalue(), error, asked_more, answers)
 
 
 def new_namespace(path: str | None) -> dict:

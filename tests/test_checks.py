@@ -266,6 +266,26 @@ class ProgramTest(CheckTestCase):
                                        excludes=["bem-vindo"]),
                          ['a saída contém "bem-vindo" (não devia)'])
 
+    def test_failure_shows_both_outputs(self) -> None:
+        failures = self.check("program", "nome = input('Nome: ')\n"
+                              "print('Ola', nome)\n", inputs=["Rui"],
+                              contains=["bem-vindo"])
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["actual_output"], "Nome: Rui\nOla Rui")
+        self.assertEqual(failures[0]["expected_output"],
+                         "Nome: Rui\nBem-vindo, Rui")
+
+    def test_passing_program_has_no_output(self) -> None:
+        self.assertEqual(self.check("program", SOLUTION, inputs=["Rui"],
+                                    contains=["rui"]), [])
+
+    def test_long_output_is_clipped(self) -> None:
+        text = checks._clip("\n".join(str(n) for n in range(100)))
+        lines = text.splitlines()
+        self.assertEqual(lines[:2], ["0", "1"])
+        self.assertEqual(lines[10], "... (60 linhas) ...")
+        self.assertEqual(lines[-1], "99")
+
     def test_must_finish(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION),
                          ["o programa não terminou (pediu mais entradas)"])
