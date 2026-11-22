@@ -335,9 +335,17 @@ def check_program(
     namespace = new_namespace(student.path)
     outcome = run(lambda: exec(student.code, namespace), inputs)
     failures = []
+    transcript = outcome.transcript()
     if outcome.error is not None:
         error = describe_error(outcome.error, student.path)
-        failures.append(_failure(f"erro {error}"))
+        given = len(outcome.answers)
+        if given:
+            where = f'depois do input {given} ("{inputs[given - 1]}")'
+        else:
+            where = "antes do primeiro input"
+        failures.append(_failure(f"erro {where}: {error}"))
+        transcript = (transcript.rstrip("\n")
+                      + f"\n<<< o programa rebentou aqui: {error} >>>")
     if must_finish and outcome.asked_more:
         failures.append(_failure("o programa não terminou "
                                  "(pediu mais input)"))
@@ -345,7 +353,7 @@ def check_program(
     if failures:
         answers = ", ".join(f'"{answer}"' for answer in inputs)
         failures.insert(0, _failure(f"input: {answers or '(nenhum)'}"))
-        failures[-1]["actual_output"] = _clip(outcome.transcript())
+        failures[-1]["actual_output"] = _clip(transcript)
     return failures
 
 

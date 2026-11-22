@@ -314,8 +314,18 @@ class ProgramTest(CheckTestCase):
         messages = self.messages("program", "x = int(input())\n",
                                  inputs=["abc"])
         self.assertEqual(len(messages), 2)
-        self.assertTrue(messages[1].startswith("erro ValueError"))
+        self.assertTrue(messages[1].startswith(
+            'erro depois do input 1 ("abc"): ValueError'))
         self.assertTrue(messages[1].endswith("(linha 1)"))
+        failures = self.check("program", "x = int(input('N: '))\n",
+                              inputs=["abc"])
+        self.assertTrue(failures[-1]["actual_output"].startswith(
+            "N: abc\n<<< o programa rebentou aqui: ValueError"))
+
+    def test_error_before_any_input(self) -> None:
+        messages = self.messages("program", "print(1 / 0)\n")
+        self.assertTrue(messages[1].startswith(
+            "erro antes do primeiro input: ZeroDivisionError"))
 
     def test_file_with_syntax_error(self) -> None:
         with self.assertRaisesRegex(checks.Failed, "o ficheiro não corre"):
