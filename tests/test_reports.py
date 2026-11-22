@@ -17,7 +17,7 @@ def sample_record() -> dict:
          "hint": "Siga o formato do enunciado.", "review": False,
          "tests": [
              {"label": "mostrar('Ana', 15)", "ok": False, "ran": True,
-              "failures": [{"message": "output diferente do esperado",
+              "failures": [{"message": "o output não tem o que era esperado",
                             "expected_output": "Ana: 15",
                             "actual_output": "Ana 15"}]},
          ]},

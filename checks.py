@@ -166,6 +166,38 @@ def _has_phrase(output: str, phrase: str) -> bool:
     return any(wanted in _loose(line) for line in output.splitlines())
 
 
+def _line_key(line: str, loose: bool) -> str:
+    key = "".join(normalize(line).split())
+    if loose:
+        key = "".join(char for char in key if char not in SENTENCE_MARKS)
+    return key
+
+
+def _line_found(wanted: str, line: str) -> bool:
+    """A line of text (3 letters or more) is found inside the line, ignoring
+    spaces and sentence punctuation. A line like ". # T" of a map has to be
+    the whole line, ignoring only spaces, since its dots matter."""
+    if sum(char.isalpha() for char in wanted) >= 3:
+        return _line_key(wanted, True) in _line_key(line, True)
+    return _line_key(wanted, False) == _line_key(line, False)
+
+
+def output_matches(actual: str, expected: str) -> bool:
+    """Every line of the expected output is in the actual output, in the
+    same order, even with extra text or extra lines around it."""
+    lines = actual.splitlines()
+    position = 0
+    for wanted in expected.splitlines():
+        if not wanted.strip():
+            continue
+        while position < len(lines) and not _line_found(wanted,
+                                                        lines[position]):
+            position += 1
+        if position == len(lines):
+            return False
+    return True
+
+
 def _phrase_failures(output: str, contains: list | tuple,
                      excludes: list | tuple) -> list[dict]:
     failures = []
@@ -244,8 +276,8 @@ def check_prints(
     if expected is NOT_GIVEN:
         expected = _call_solution(solution, function, args, inputs)[0].output
     expected = str(expected)
-    if normalized_lines(outcome.output) != normalized_lines(expected):
-        failures.insert(0, _failure("output diferente do esperado",
+    if not output_matches(outcome.output, expected):
+        failures.insert(0, _failure("o output não tem o que era esperado",
                                     expected.rstrip(),
                                     outcome.output.rstrip() or "(sem output)"))
     return failures
@@ -306,10 +338,9 @@ def check_call(
                                      f"obtido {show(outcome.returned)}"))
     if same_output:
         expected_output = from_solution()[0].output
-        if (normalized_lines(outcome.output)
-                != normalized_lines(expected_output)):
+        if not output_matches(outcome.output, expected_output):
             failures.append(_failure(
-                "output diferente do esperado", expected_output.rstrip(),
+                "o output não tem o que era esperado", expected_output.rstrip(),
                 outcome.output.rstrip() or "(sem output)"))
     failures += _phrase_failures(outcome.output, contains, excludes)
     for position in mutates:

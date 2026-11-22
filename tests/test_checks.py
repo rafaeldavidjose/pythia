@@ -136,7 +136,7 @@ class PrintsTest(CheckTestCase):
         failures = self.check("prints", source, function="saudar",
                               args=["Ana"])
         self.assertEqual(failures, [{
-            "message": "output diferente do esperado",
+            "message": "o output não tem o que era esperado",
             "expected_output": "Olá, Ana!",
             "actual_output": "Oi Ana",
         }])
@@ -168,7 +168,28 @@ class PrintsTest(CheckTestCase):
         self.assertEqual(
             self.messages("prints", source, function="saudar", args=["Ana"],
                           expected="Olá, Ana!", contains=["olá"]),
-            ["output diferente do esperado", 'o output não contém "olá"'])
+            ["o output não tem o que era esperado",
+             'o output não contém "olá"'])
+
+    def test_extra_text_and_lines_are_fine(self) -> None:
+        source = ("def mostrar(d):\n    print('Inventário:')\n"
+                  "    for k in d:\n        print(k, ' :  ', d[k], '.')\n")
+        self.assertEqual(self.check("prints", source, function="mostrar",
+                                    args=[{"tocha": 2, "corda": 1}],
+                                    expected="tocha: 2\ncorda: 1"), [])
+
+    def test_expected_lines_keep_their_order(self) -> None:
+        source = ("def mostrar(d):\n    print('corda: 1')\n"
+                  "    print('tocha: 2')\n")
+        self.assertEqual(self.messages("prints", source, function="mostrar",
+                                       args=[{}],
+                                       expected="tocha: 2\ncorda: 1"),
+                         ["o output não tem o que era esperado"])
+
+    def test_map_rows_keep_their_dots(self) -> None:
+        self.assertFalse(checks.output_matches("P . # . T", ". . # . T"))
+        self.assertTrue(checks.output_matches(". . # . T", ". . # . T"))
+        self.assertFalse(checks.output_matches(". . . # . T", ". . # . T"))
 
 
 class MutatesTest(CheckTestCase):
@@ -224,7 +245,7 @@ class CallTest(CheckTestCase):
                           args=[[["."]], 3], same_output=True,
                           contains=["a andar"], mutates=[0],
                           names={"0": "mapa"}),
-            ["esperado 6, obtido 3", "output diferente do esperado",
+            ["esperado 6, obtido 3", "o output não tem o que era esperado",
              'o output não contém "a andar"',
              "depois da chamada, mapa[0][0] = '.', esperado 'P'"])
 

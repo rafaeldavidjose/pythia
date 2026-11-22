@@ -135,7 +135,7 @@ A mistake in `rules.json` is reported with its place, for example `criterion 2 (
 | `mutates` | `call` only. Argument positions, like `[0]`, that must end up equal to the solution's after the call. |
 | `must_finish` | `program` only. The file cannot ask for more input than given. `true` by default. |
 
-Tuples and lists count as equal, numbers are compared to 6 decimal places, and output ignores case, accents and extra spaces, so a valid alternative solution is not penalised. A phrase in `contains` or `excludes` is looked for on each line of the output, and it also ignores spaces and the marks `. , ; : ! ?`, so `flecha:2` and `Flecha : 2.` both count as `flecha: 2`. `exit()` at the end of a program is fine.
+Tuples and lists count as equal, numbers are compared to 6 decimal places, and output ignores case and accents, so a valid alternative solution is not penalised. When the output is compared with the solution's, each line of the expected output has to be in the student's output, in the same order, and extra text or extra lines around it are fine. A line of text is looked for ignoring spaces and the marks `. , ; : ! ?`. A line with fewer than 3 letters, like a row of a map, has to be a whole line, ignoring only spaces, since its dots matter. A phrase in `contains` or `excludes` is looked for on each line of the output, and it also ignores spaces and the marks `. , ; : ! ?`, so `flecha:2` and `Flecha : 2.` both count as `flecha: 2`. `exit()` at the end of a program is fine.
 
 Sets are compared as sets, so the order does not matter, but a list does not count as a set. Reports write sets in sorted order.
 
