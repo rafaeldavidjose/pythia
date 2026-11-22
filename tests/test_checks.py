@@ -320,7 +320,7 @@ class ProgramTest(CheckTestCase):
         failures = self.check("program", "x = int(input('N: '))\n",
                               inputs=["abc"])
         self.assertTrue(failures[-1]["actual_output"].startswith(
-            "N: abc\n<<< o programa rebentou aqui: ValueError"))
+            "N: abc\n<<< o programa parou aqui com erro: ValueError"))
 
     def test_error_before_any_input(self) -> None:
         messages = self.messages("program", "print(1 / 0)\n")

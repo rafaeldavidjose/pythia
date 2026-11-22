@@ -345,7 +345,7 @@ def check_program(
             where = "antes do primeiro input"
         failures.append(_failure(f"erro {where}: {error}"))
         transcript = (transcript.rstrip("\n")
-                      + f"\n<<< o programa rebentou aqui: {error} >>>")
+                      + f"\n<<< o programa parou aqui com erro: {error} >>>")
     if must_finish and outcome.asked_more:
         failures.append(_failure("o programa não terminou "
                                  "(pediu mais input)"))
