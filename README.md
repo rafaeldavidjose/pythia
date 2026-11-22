@@ -101,7 +101,7 @@ Like an egrader rules file, every test names a check, gives it a weight and pass
 | `weight` | test | How much the test counts inside its criterion. 1 by default. |
 | `params` | test | The check's params. |
 | `hint` | test | Shown under the test when it fails. The same hint is shown once per criterion. |
-| `label` | test | Text for the test in the report. By default it is the call, like `media([10, 12, 14])`, followed by `: saída` for `prints` and `: notas depois da chamada` for `mutates`, since one call can have several tests. |
+| `label` | test | Text for the test in the report. By default it is the call, like `media([10, 12, 14])`, followed by `: output` for `prints` and `: notas depois da chamada` for `mutates`, since one call can have several tests. |
 
 A criterion's grade is its points times the weight of the passing tests over the total weight, rounded to 0.25.
 

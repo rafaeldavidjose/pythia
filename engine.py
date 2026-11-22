@@ -766,9 +766,11 @@ def _test_lines(test: dict) -> list[str]:
     for failure in test["failures"]:
         lines.append(f"    - {failure['message']}")
         if "expected_output" in failure:
-            lines += _output_lines("Esperado", failure["expected_output"])
-        if "actual_output" in failure:
-            lines += _output_lines("Obtido", failure["actual_output"])
+            lines += _output_lines("Output esperado",
+                                   failure["expected_output"])
+            lines += _output_lines("Output obtido", failure["actual_output"])
+        elif "actual_output" in failure:
+            lines += _output_lines("Output", failure["actual_output"])
     if test.get("hint"):
         lines.append(f"    - Explicação: {test['hint']}")
     return lines

@@ -114,7 +114,7 @@ class ReturnsTest(CheckTestCase):
 
     def test_asking_for_more_input_fails(self) -> None:
         source = "def perguntar():\n    return input() + input()\n"
-        with self.assertRaisesRegex(checks.Failed, "pediu mais entradas"):
+        with self.assertRaisesRegex(checks.Failed, "pediu mais input"):
             self.check("returns", source, function="perguntar",
                        inputs=["20"])
 
@@ -136,7 +136,7 @@ class PrintsTest(CheckTestCase):
         failures = self.check("prints", source, function="saudar",
                               args=["Ana"])
         self.assertEqual(failures, [{
-            "message": "saída diferente da esperada",
+            "message": "output diferente do esperado",
             "expected_output": "Olá, Ana!",
             "actual_output": "Oi Ana",
         }])
@@ -145,7 +145,7 @@ class PrintsTest(CheckTestCase):
         source = "def saudar(nome):\n    pass\n"
         failures = self.check("prints", source, function="saudar",
                               args=["Ana"])
-        self.assertEqual(failures[0]["actual_output"], "(sem saída)")
+        self.assertEqual(failures[0]["actual_output"], "(sem output)")
 
     def test_expected_text(self) -> None:
         self.assertEqual(self.check("prints", SOLUTION, function="saudar",
@@ -161,14 +161,14 @@ class PrintsTest(CheckTestCase):
         self.assertEqual(
             self.messages("prints", source, function="saudar", args=["Ana"],
                           excludes=["erro"]),
-            ['a saída contém "erro" (não devia)'])
+            ['o output contém "erro" (não devia)'])
 
     def test_contains_with_expected_checks_both(self) -> None:
         source = "def saudar(nome):\n    print('Oi', nome)\n"
         self.assertEqual(
             self.messages("prints", source, function="saudar", args=["Ana"],
                           expected="Olá, Ana!", contains=["olá"]),
-            ["saída diferente da esperada", 'a saída não contém "olá"'])
+            ["output diferente do esperado", 'o output não contém "olá"'])
 
 
 class MutatesTest(CheckTestCase):
@@ -224,8 +224,8 @@ class CallTest(CheckTestCase):
                           args=[[["."]], 3], same_output=True,
                           contains=["a andar"], mutates=[0],
                           names={"0": "mapa"}),
-            ["esperado 6, obtido 3", "saída diferente da esperada",
-             'a saída não contém "a andar"',
+            ["esperado 6, obtido 3", "output diferente do esperado",
+             'o output não contém "a andar"',
              "depois da chamada, mapa[0][0] = '.', esperado 'P'"])
 
     def test_one_wrong_part_fails_the_test(self) -> None:
@@ -259,20 +259,20 @@ class ProgramTest(CheckTestCase):
     def test_missing_phrase(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION, inputs=["Rui"],
                                        contains=["adeus"]),
-                         ['entradas: "Rui"', 'a saída não contém "adeus"'])
+                         ['input: "Rui"', 'o output não contém "adeus"'])
 
     def test_excluded_phrase(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION, inputs=["Rui"],
                                        excludes=["bem-vindo"]),
-                         ['entradas: "Rui"',
-                          'a saída contém "bem-vindo" (não devia)'])
+                         ['input: "Rui"',
+                          'o output contém "bem-vindo" (não devia)'])
 
     def test_failure_shows_inputs_and_output(self) -> None:
         failures = self.check("program", "nome = input('Nome: ')\n"
                               "print('Ola', nome)\n", inputs=[" Rui"],
                               contains=["bem-vindo"])
         self.assertEqual([failure["message"] for failure in failures],
-                         ['entradas: " Rui"', 'a saída não contém "bem-vindo"'])
+                         ['input: " Rui"', 'o output não contém "bem-vindo"'])
         self.assertEqual(failures[-1]["actual_output"], "Nome:  Rui\nOla  Rui")
         self.assertNotIn("expected_output", failures[-1])
 
@@ -289,8 +289,8 @@ class ProgramTest(CheckTestCase):
 
     def test_must_finish(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION),
-                         ["entradas: (nenhuma)",
-                          "o programa não terminou (pediu mais entradas)"])
+                         ["input: (nenhum)",
+                          "o programa não terminou (pediu mais input)"])
         self.assertEqual(self.check("program", SOLUTION, must_finish=False),
                          [])
 
@@ -425,13 +425,13 @@ class CheckInfoTest(unittest.TestCase):
                                            "position": 1}),
                          "f(1, []): argumento 2 depois da chamada")
         self.assertEqual(label("prints", {"function": "f", "args": ["Ana"]}),
-                         "f('Ana'): saída")
+                         "f('Ana'): output")
         self.assertEqual(label("returns", {"function": "f",
                                            "args": [(1, 2)]}),
                          "f((1, 2))")
         self.assertEqual(label("program", {"inputs": ["1", 2]}),
-                         "programa com as entradas 1, 2")
-        self.assertEqual(label("program", {}), "programa sem entradas")
+                         "programa com o input 1, 2")
+        self.assertEqual(label("program", {}), "programa sem input")
         self.assertEqual(label("defines", {"function": "f"}),
                          "função f definida")
 

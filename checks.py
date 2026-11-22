@@ -144,7 +144,7 @@ def _clip(text: str, head: int = 10, tail: int = 30) -> str:
     """Keep the start and the end of a long output."""
     lines = text.rstrip().splitlines()
     if len(lines) <= head + tail + 1:
-        return "\n".join(lines) or "(sem saída)"
+        return "\n".join(lines) or "(sem output)"
     skipped = len(lines) - head - tail
     return "\n".join(lines[:head] + [f"... ({skipped} linhas) ..."]
                      + lines[-tail:])
@@ -155,10 +155,10 @@ def _phrase_failures(output: str, contains: list | tuple,
     failures = []
     for phrase in contains:
         if normalize(phrase) not in normalize(output):
-            failures.append(_failure(f'a saída não contém "{phrase}"'))
+            failures.append(_failure(f'o output não contém "{phrase}"'))
     for phrase in excludes:
         if normalize(phrase) in normalize(output):
-            failures.append(_failure(f'a saída contém "{phrase}" (não devia)'))
+            failures.append(_failure(f'o output contém "{phrase}" (não devia)'))
     return failures
 
 
@@ -173,7 +173,7 @@ def _call(submission: Submission, function: str, args: list | tuple,
     if outcome.error is not None:
         raise Failed(f"erro {describe_error(outcome.error, submission.path)}")
     if outcome.asked_more:
-        raise Failed("pediu mais entradas (input) do que as do teste")
+        raise Failed("pediu mais input do que o do teste")
     return outcome, call_args
 
 
@@ -229,9 +229,9 @@ def check_prints(
         expected = _call_solution(solution, function, args, inputs)[0].output
     expected = str(expected)
     if normalized_lines(outcome.output) != normalized_lines(expected):
-        failures.insert(0, _failure("saída diferente da esperada",
+        failures.insert(0, _failure("output diferente do esperado",
                                     expected.rstrip(),
-                                    outcome.output.rstrip() or "(sem saída)"))
+                                    outcome.output.rstrip() or "(sem output)"))
     return failures
 
 
@@ -293,8 +293,8 @@ def check_call(
         if (normalized_lines(outcome.output)
                 != normalized_lines(expected_output)):
             failures.append(_failure(
-                "saída diferente da esperada", expected_output.rstrip(),
-                outcome.output.rstrip() or "(sem saída)"))
+                "output diferente do esperado", expected_output.rstrip(),
+                outcome.output.rstrip() or "(sem output)"))
     failures += _phrase_failures(outcome.output, contains, excludes)
     for position in mutates:
         wanted = from_solution()[1][position]
@@ -324,11 +324,11 @@ def check_program(
         failures.append(_failure(f"erro {error}"))
     if must_finish and outcome.asked_more:
         failures.append(_failure("o programa não terminou "
-                                 "(pediu mais entradas)"))
+                                 "(pediu mais input)"))
     failures += _phrase_failures(outcome.output, contains, excludes)
     if failures:
         answers = ", ".join(f'"{answer}"' for answer in inputs)
-        failures.insert(0, _failure(f"entradas: {answers or '(nenhuma)'}"))
+        failures.insert(0, _failure(f"input: {answers or '(nenhum)'}"))
         failures[-1]["actual_output"] = _clip(outcome.transcript())
     return failures
 
@@ -407,8 +407,8 @@ def default_label(name: str, params: dict) -> str:
     if name == "program":
         inputs = [str(answer) for answer in params.get("inputs", [])]
         if not inputs:
-            return "programa sem entradas"
-        return f"programa com as entradas {', '.join(inputs)}"
+            return "programa sem input"
+        return f"programa com o input {', '.join(inputs)}"
     if name == "defines":
         return f"função {params['function']} definida"
     names = params.get("names") or {}
@@ -419,7 +419,7 @@ def default_label(name: str, params: dict) -> str:
     call = f"{params['function']}({', '.join(shown)})"
     # One call can have several tests, so say what each one looks at
     if name == "prints":
-        return f"{call}: saída"
+        return f"{call}: output"
     if name == "mutates":
         argument = _argument_name(names, params.get("position", 0))
         return f"{call}: {argument} depois da chamada"

@@ -120,7 +120,7 @@ class DescribeErrorTest(unittest.TestCase):
     def test_too_much_output(self) -> None:
         self.assertEqual(
             sandbox.describe_error(sandbox.TooMuchOutput(), None),
-            "saída demasiado longa (possível ciclo infinito)")
+            "output demasiado longo (possível ciclo infinito)")
 
 
 if __name__ == "__main__":

@@ -139,7 +139,7 @@ def describe_error(error: BaseException, path: str | None) -> str:
         line = error.lineno or line
         text = f"SyntaxError: {error.msg}"
     elif isinstance(error, TooMuchOutput):
-        text = "saída demasiado longa (possível ciclo infinito)"
+        text = "output demasiado longo (possível ciclo infinito)"
     else:
         text = f"{type(error).__name__}: {error}"
     return f"{text} (linha {line})" if line else text

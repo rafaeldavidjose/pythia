@@ -17,7 +17,7 @@ def sample_record() -> dict:
          "hint": "Siga o formato do enunciado.", "review": False,
          "tests": [
              {"label": "mostrar('Ana', 15)", "ok": False, "ran": True,
-              "failures": [{"message": "saída diferente da esperada",
+              "failures": [{"message": "output diferente do esperado",
                             "expected_output": "Ana: 15",
                             "actual_output": "Ana 15"}]},
          ]},
@@ -96,9 +96,11 @@ class ReportMarkdownTest(unittest.TestCase):
 
     def test_expected_and_obtained_output(self) -> None:
         report = self.report()
-        self.assertIn("    - Esperado:\n      ```\n      Ana: 15\n      ```",
+        self.assertIn("    - Output esperado:\n      ```\n"
+                      "      Ana: 15\n      ```",
                       report)
-        self.assertIn("    - Obtido:\n      ```\n      Ana 15\n      ```",
+        self.assertIn("    - Output obtido:\n      ```\n"
+                      "      Ana 15\n      ```",
                       report)
 
     def test_hint_comment_and_notes(self) -> None:
@@ -154,7 +156,7 @@ class ReportTextTest(unittest.TestCase):
         self.assertIn("media", lines)
 
     def test_output_blocks_keep_their_lines(self) -> None:
-        self.assertIn("    - Obtido:\n      Ana 15\n", self.text)
+        self.assertIn("    - Output obtido:\n      Ana 15\n", self.text)
 
 
 class ExportTest(ProjectTestCase):
