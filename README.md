@@ -175,7 +175,7 @@ Reports follow the shape of an egrader report: nested lists of `key: value`, wit
     - esperado 'Inválida', obtido 'Aprovado'
 ```
 
-When a `program` test fails, the report also shows what the student's program printed and what the solution prints with the same inputs, with each answer to `input()` after its prompt, as in a terminal. A long output keeps its first 10 and last 30 lines.
+When a `program` test fails, the report also lists the inputs it gave and shows what the student's program printed, with each answer to `input()` after its prompt, as in a terminal. A long output keeps its first 10 and last 30 lines.
 
 A test that never ran, for example after a syntax error, shows as `NÃO CORREU`. A test with a weight other than 1 shows it next to the result. The plain-text version for Moodle has the same lines without the Markdown marks.
 

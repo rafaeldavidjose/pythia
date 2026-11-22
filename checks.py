@@ -327,11 +327,9 @@ def check_program(
                                  "(pediu mais entradas)"))
     failures += _phrase_failures(outcome.output, contains, excludes)
     if failures:
+        answers = ", ".join(f'"{answer}"' for answer in inputs)
+        failures.insert(0, _failure(f"entradas: {answers or '(nenhuma)'}"))
         failures[-1]["actual_output"] = _clip(outcome.transcript())
-        if solution.code is not None:
-            reference = run(lambda: exec(solution.code,
-                                         new_namespace(solution.path)), inputs)
-            failures[-1]["expected_output"] = _clip(reference.transcript())
     return failures
 
 

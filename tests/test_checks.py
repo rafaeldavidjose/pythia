@@ -259,21 +259,22 @@ class ProgramTest(CheckTestCase):
     def test_missing_phrase(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION, inputs=["Rui"],
                                        contains=["adeus"]),
-                         ['a saída não contém "adeus"'])
+                         ['entradas: "Rui"', 'a saída não contém "adeus"'])
 
     def test_excluded_phrase(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION, inputs=["Rui"],
                                        excludes=["bem-vindo"]),
-                         ['a saída contém "bem-vindo" (não devia)'])
+                         ['entradas: "Rui"',
+                          'a saída contém "bem-vindo" (não devia)'])
 
-    def test_failure_shows_both_outputs(self) -> None:
+    def test_failure_shows_inputs_and_output(self) -> None:
         failures = self.check("program", "nome = input('Nome: ')\n"
-                              "print('Ola', nome)\n", inputs=["Rui"],
+                              "print('Ola', nome)\n", inputs=[" Rui"],
                               contains=["bem-vindo"])
-        self.assertEqual(len(failures), 1)
-        self.assertEqual(failures[0]["actual_output"], "Nome: Rui\nOla Rui")
-        self.assertEqual(failures[0]["expected_output"],
-                         "Nome: Rui\nBem-vindo, Rui")
+        self.assertEqual([failure["message"] for failure in failures],
+                         ['entradas: " Rui"', 'a saída não contém "bem-vindo"'])
+        self.assertEqual(failures[-1]["actual_output"], "Nome:  Rui\nOla  Rui")
+        self.assertNotIn("expected_output", failures[-1])
 
     def test_passing_program_has_no_output(self) -> None:
         self.assertEqual(self.check("program", SOLUTION, inputs=["Rui"],
@@ -288,16 +289,17 @@ class ProgramTest(CheckTestCase):
 
     def test_must_finish(self) -> None:
         self.assertEqual(self.messages("program", SOLUTION),
-                         ["o programa não terminou (pediu mais entradas)"])
+                         ["entradas: (nenhuma)",
+                          "o programa não terminou (pediu mais entradas)"])
         self.assertEqual(self.check("program", SOLUTION, must_finish=False),
                          [])
 
     def test_error_while_running(self) -> None:
         messages = self.messages("program", "x = int(input())\n",
                                  inputs=["abc"])
-        self.assertEqual(len(messages), 1)
-        self.assertTrue(messages[0].startswith("erro ValueError"))
-        self.assertTrue(messages[0].endswith("(linha 1)"))
+        self.assertEqual(len(messages), 2)
+        self.assertTrue(messages[1].startswith("erro ValueError"))
+        self.assertTrue(messages[1].endswith("(linha 1)"))
 
     def test_file_with_syntax_error(self) -> None:
         with self.assertRaisesRegex(checks.Failed, "o ficheiro não corre"):
